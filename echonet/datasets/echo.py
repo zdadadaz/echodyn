@@ -23,7 +23,7 @@ class Echo(torch.utils.data.Dataset):
 
         if root is None:
             root = echonet.config.DATA_DIR
-
+            
         self.folder = pathlib.Path(root)
         self.split = split
         if not isinstance(target_type, list):
