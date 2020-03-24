@@ -9,10 +9,95 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
+from echonet.models.unet_model import UNet
 
+def run_epoch(model, dataloader, phase, optim, device):
+
+    total = 0.
+    n = 0
+
+    pos = 0
+    neg = 0
+    pos_pix = 0
+    neg_pix = 0
+
+    model.train(phase == 'train')
+
+    large_inter = 0
+    large_union = 0
+    small_inter = 0
+    small_union = 0
+    large_inter_list = []
+    large_union_list = []
+    small_inter_list = []
+    small_union_list = []
+
+    with torch.set_grad_enabled(phase == 'train'):
+        with tqdm.tqdm(total=len(dataloader)) as pbar:
+            for (i, (_, (large_frame, small_frame, large_trace, small_trace))) in enumerate(dataloader):
+                pos += (large_trace == 1).sum().item()
+                pos += (small_trace == 1).sum().item()
+                neg += (large_trace == 0).sum().item()
+                neg += (small_trace == 0).sum().item()
+
+                pos_pix += (large_trace == 1).sum(0).to("cpu").detach().numpy()
+                pos_pix += (small_trace == 1).sum(0).to("cpu").detach().numpy()
+                neg_pix += (large_trace == 0).sum(0).to("cpu").detach().numpy()
+                neg_pix += (small_trace == 0).sum(0).to("cpu").detach().numpy()
+
+                large_frame = large_frame.to(device)
+                large_trace = large_trace.to(device)
+                tmp = model(large_frame)
+                # print(tmp)
+                y_large = model(large_frame)["outc"]
+                loss_large = torch.nn.functional.binary_cross_entropy_with_logits(y_large[:, 0, :, :], large_trace, reduction="sum")
+                large_inter += np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                large_union += np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                large_inter_list.extend(np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                large_union_list.extend(np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+
+                small_frame = small_frame.to(device)
+                small_trace = small_trace.to(device)
+                y_small = model(small_frame)["outc"]
+                loss_small = torch.nn.functional.binary_cross_entropy_with_logits(y_small[:, 0, :, :], small_trace, reduction="sum")
+                small_inter += np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                small_union += np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                small_inter_list.extend(np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                small_union_list.extend(np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+
+                pos += (large_trace == 1).sum().item()
+                pos += (small_trace == 1).sum().item()
+                neg += (large_trace == 0).sum().item()
+                neg += (small_trace == 0).sum().item()
+
+                loss = (loss_large + loss_small) / 2
+                if phase == 'train':
+                    optim.zero_grad()
+                    loss.backward()
+                    optim.step()
+
+                total += loss.item()
+                n += large_trace.size(0)
+
+                p = pos / (pos + neg)
+                p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
+                pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, loss.item() / large_trace.size(0) / 112 / 112, -p * math.log(p) - (1 - p) * math.log(1 - p), (-p_pix * np.log(p_pix) - (1 - p_pix) * np.log(1 - p_pix)).mean(), 2 * large_inter / (large_union + large_inter), 2 * small_inter / (small_union + small_inter)))
+                pbar.update()
+
+    large_inter_list = np.array(large_inter_list)
+    large_union_list = np.array(large_union_list)
+    small_inter_list = np.array(small_inter_list)
+    small_union_list = np.array(small_union_list)
+
+    return (total / n / 112 / 112,
+            large_inter_list,
+            large_union_list,
+            small_inter_list,
+            small_union_list,
+            )
 
 def run(num_epochs=50,
-        modelname="deeplabv3_resnet50",
+        modelname="unet",
         pretrained=False,
         output=None,
         device=None,
@@ -37,9 +122,13 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
+    if modelname == "unet":
+        model = UNet(n_channels=3, n_classes=1)
+    else:
+        model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
 
-    model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
+    # print(model)
+    # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
@@ -88,7 +177,7 @@ def run(num_epochs=50,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
 
-                loss, large_inter, large_union, small_inter, small_union = echonet.utils.segmentation.run_epoch(model, dataloaders[phase], phase, optim, device)
+                loss, large_inter, large_union, small_inter, small_union = run_epoch(model, dataloaders[phase], phase, optim, device)
                 overall_dice = 2 * (large_inter.sum() + small_inter.sum()) / (large_union.sum() + large_inter.sum() + small_union.sum() + small_inter.sum())
                 large_dice = 2 * large_inter.sum() / (large_union.sum() + large_inter.sum())
                 small_dice = 2 * small_inter.sum() / (small_union.sum() + small_inter.sum())
@@ -238,85 +327,19 @@ def run(num_epochs=50,
                     echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
 
 
-def run_epoch(model, dataloader, phase, optim, device):
 
-    total = 0.
-    n = 0
 
-    pos = 0
-    neg = 0
-    pos_pix = 0
-    neg_pix = 0
 
-    model.train(phase == 'train')
-
-    large_inter = 0
-    large_union = 0
-    small_inter = 0
-    small_union = 0
-    large_inter_list = []
-    large_union_list = []
-    small_inter_list = []
-    small_union_list = []
-
-    with torch.set_grad_enabled(phase == 'train'):
-        with tqdm.tqdm(total=len(dataloader)) as pbar:
-            for (i, (_, (large_frame, small_frame, large_trace, small_trace))) in enumerate(dataloader):
-                pos += (large_trace == 1).sum().item()
-                pos += (small_trace == 1).sum().item()
-                neg += (large_trace == 0).sum().item()
-                neg += (small_trace == 0).sum().item()
-
-                pos_pix += (large_trace == 1).sum(0).to("cpu").detach().numpy()
-                pos_pix += (small_trace == 1).sum(0).to("cpu").detach().numpy()
-                neg_pix += (large_trace == 0).sum(0).to("cpu").detach().numpy()
-                neg_pix += (small_trace == 0).sum(0).to("cpu").detach().numpy()
-
-                large_frame = large_frame.to(device)
-                large_trace = large_trace.to(device)
-                y_large = model(large_frame)["out"]
-                loss_large = torch.nn.functional.binary_cross_entropy_with_logits(y_large[:, 0, :, :], large_trace, reduction="sum")
-                large_inter += np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                large_union += np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                large_inter_list.extend(np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-                large_union_list.extend(np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-
-                small_frame = small_frame.to(device)
-                small_trace = small_trace.to(device)
-                y_small = model(small_frame)["out"]
-                loss_small = torch.nn.functional.binary_cross_entropy_with_logits(y_small[:, 0, :, :], small_trace, reduction="sum")
-                small_inter += np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                small_union += np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                small_inter_list.extend(np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-                small_union_list.extend(np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-
-                pos += (large_trace == 1).sum().item()
-                pos += (small_trace == 1).sum().item()
-                neg += (large_trace == 0).sum().item()
-                neg += (small_trace == 0).sum().item()
-
-                loss = (loss_large + loss_small) / 2
-                if phase == 'train':
-                    optim.zero_grad()
-                    loss.backward()
-                    optim.step()
-
-                total += loss.item()
-                n += large_trace.size(0)
-
-                p = pos / (pos + neg)
-                p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
-                pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, loss.item() / large_trace.size(0) / 112 / 112, -p * math.log(p) - (1 - p) * math.log(1 - p), (-p_pix * np.log(p_pix) - (1 - p_pix) * np.log(1 - p_pix)).mean(), 2 * large_inter / (large_union + large_inter), 2 * small_inter / (small_union + small_inter)))
-                pbar.update()
-
-    large_inter_list = np.array(large_inter_list)
-    large_union_list = np.array(large_union_list)
-    small_inter_list = np.array(small_inter_list)
-    small_union_list = np.array(small_union_list)
-
-    return (total / n / 112 / 112,
-            large_inter_list,
-            large_union_list,
-            small_inter_list,
-            small_union_list,
-            )
+echonet.config.DATA_DIR = '../db/EchoNet-Dynamic'
+run(num_epochs=50,
+        # modelname="deeplabv3_resnet50",
+        modelname="unet",
+        pretrained=False,
+        output=None,
+        device=None,
+        n_train_patients=None,
+        num_workers=5,
+        batch_size=5,
+        seed=0,
+        lr_step_period=None,
+        save_segmentation=False)
