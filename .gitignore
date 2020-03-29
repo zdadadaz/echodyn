@@ -7,3 +7,4 @@ echonet.cfg
 echonet.egg-info/
 output/
 *.png
+.vscode/*

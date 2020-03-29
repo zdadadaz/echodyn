@@ -6,5 +6,5 @@ save_non_project_files = False
 
 [main]
 version = 0.2.0
-recent_files = ['echonet/datasets/echo.py', 'playground/mask.py', 'echonet/utils/segmentation.py', 'echonet/utils/__init__.py', '../../../../.local/lib/python3.7/site-packages/torch/utils/data/dataloader.py', 'playground/test.py']
+recent_files = ['train_unet.py', 'playground/check_model.py', 'echonet/utils/video.py', 'echonet/datasets/echo.py', 'playground/test_ef.py', 'echonet/models/unet_brain.py', 'playground/mask.py']
 
