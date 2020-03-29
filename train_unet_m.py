@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -11,9 +9,9 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet_brain import UNet
-
-
+from echonet.models.unet_brain import UNet,UNet_multi
+from echonet.datasets.echo import Echo
+import sklearn.metrics
 
 def run_epoch(model, dataloader, phase, optim, device):
 
@@ -35,10 +33,24 @@ def run_epoch(model, dataloader, phase, optim, device):
     large_union_list = []
     small_inter_list = []
     small_union_list = []
-
+    
+    ef_criteria = torch.nn.MSELoss()
+    yhat_esv = []
+    y_esv = []
+    yhat_edv = []
+    y_edv = []
+    runningloss_small = 0
+    runningloss_large = 0
+    count = 0
     with torch.set_grad_enabled(phase == 'train'):
+        # with tqdm.tqdm(total=10) as pbar:
         with tqdm.tqdm(total=len(dataloader)) as pbar:
-            for (i, (_, (large_frame, small_frame, large_trace, small_trace))) in enumerate(dataloader):
+            for (i, (_, (large_frame, small_frame, large_trace, small_trace, ef, esv, edv))) in enumerate(dataloader):
+                esv = esv.to(device)
+                edv = edv.to(device)
+                y_esv.append(esv.cpu().numpy())
+                y_edv.append(edv.cpu().numpy())
+                
                 pos += (large_trace == 1).sum().item()
                 pos += (small_trace == 1).sum().item()
                 neg += (large_trace == 0).sum().item()
@@ -51,7 +63,9 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 large_frame = large_frame.to(device)
                 large_trace = large_trace.to(device)
-                y_large = model(large_frame)
+                tmp = model(large_frame)
+                # print(tmp)
+                y_large, ef_large = model(large_frame)
                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(y_large[:, 0, :, :], large_trace, reduction="sum")
                 large_inter += np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
                 large_union += np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -60,7 +74,7 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 small_frame = small_frame.to(device)
                 small_trace = small_trace.to(device)
-                y_small = model(small_frame)
+                y_small, ef_small = model(small_frame)
                 loss_small = torch.nn.functional.binary_cross_entropy_with_logits(y_small[:, 0, :, :], small_trace, reduction="sum")
                 small_inter += np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
                 small_union += np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -71,19 +85,39 @@ def run_epoch(model, dataloader, phase, optim, device):
                 pos += (small_trace == 1).sum().item()
                 neg += (large_trace == 0).sum().item()
                 neg += (small_trace == 0).sum().item()
+                
+                yhat_esv.append(ef_small.view(-1).to("cpu").detach().numpy())
+                yhat_edv.append(ef_large.view(-1).to("cpu").detach().numpy())
+                
+                loss_ef_large = ef_criteria(ef_large.view(-1)/100, edv/100)
+                loss_ef_small = ef_criteria(ef_small.view(-1)/100, esv/100)
 
-                loss = (loss_large + loss_small) / 2
+                loss_seg = (loss_large + loss_small) / 2 
+                loss = loss_seg + loss_ef_large + loss_ef_small
                 if phase == 'train':
                     optim.zero_grad()
                     loss.backward()
                     optim.step()
 
-                total += loss.item()
+                total += loss_seg.item()
                 n += large_trace.size(0)
-
+                runningloss_large += loss_ef_large.item() * large_frame.size(0)
+                runningloss_small += loss_ef_small.item() * large_frame.size(0)
+                
                 p = pos / (pos + neg)
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
-                pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, loss.item() / large_trace.size(0) / 112 / 112, -p * math.log(p) - (1 - p) * math.log(1 - p), (-p_pix * np.log(p_pix) - (1 - p_pix) * np.log(1 - p_pix)).mean(), 2 * large_inter / (large_union + large_inter), 2 * small_inter / (small_union + small_inter)))
+                
+                total_seg = total / n / 112 / 112
+                
+                epoch_loss = runningloss_small/n + runningloss_small/n + total_seg
+                
+                pbar.set_postfix_str("tot: {:.4f}, esv: {:.4f}, edv: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_small/n, runningloss_large/n, total_seg))
+                
+                # pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, 
+                #                                                                               loss.item() / large_trace.size(0) / 112 / 112, 
+                #                                                                               -p * math.log(p) - (1 - p) * math.log(1 - p), 
+                #                                                                               (-p_pix * np.log(p_pix) - (1 - p_pix) * np.log(1 - p_pix)).mean(), 
+                #                                                                               2 * large_inter / (large_union + large_inter), 2 * small_inter / (small_union + small_inter)))
                 pbar.update()
 
     large_inter_list = np.array(large_inter_list)
@@ -91,15 +125,27 @@ def run_epoch(model, dataloader, phase, optim, device):
     small_inter_list = np.array(small_inter_list)
     small_union_list = np.array(small_union_list)
 
-    return (total / n / 112 / 112,
+    y_esv = np.concatenate(y_esv)
+    y_edv = np.concatenate(y_edv)
+    yhat_esv = np.concatenate(yhat_esv)
+    yhat_edv = np.concatenate(yhat_edv)
+    
+    return (epoch_loss,
+            total_seg,
             large_inter_list,
             large_union_list,
             small_inter_list,
             small_union_list,
+            runningloss_small/n, 
+            runningloss_large/n,
+            yhat_esv,
+            yhat_edv,
+            y_esv,
+            y_edv
             )
 
 def run(num_epochs=50,
-        modelname="deeplabv3_resnet50",
+        modelname="unet",
         pretrained=False,
         output=None,
         device=None,
@@ -114,7 +160,7 @@ def run(num_epochs=50,
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    tasks = ["LargeFrame", "SmallFrame", "LargeTrace", "SmallTrace"]
+    tasks = ["LargeFrame", "SmallFrame", "LargeTrace", "SmallTrace", "EF", "ESV", "EDV"]
 
     if output is None:
         output = os.path.join("output", "segmentation", "{}_{}".format(modelname, "pretrained" if pretrained else "random"))
@@ -124,11 +170,13 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if modelname == 'unet':
-        model = UNet(in_channels=3, out_channels=1)
+    if modelname == "unet_m":
+        model = UNet_multi(in_channels=3, out_channels=1)
     else:
         model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
-        model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
+
+    # print(model)
+    # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
@@ -138,7 +186,7 @@ def run(num_epochs=50,
         lr_step_period = math.inf
     scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
 
-    mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
+    mean, std = echonet.utils.get_mean_and_std(Echo(split="train"))
     kwargs = {"target_type": tasks,
               "mean": mean,
               "std": std
@@ -152,9 +200,11 @@ def run(num_epochs=50,
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"), drop_last=True)
     val_dataloader = torch.utils.data.DataLoader(
-        echonet.datasets.Echo(split="val", **kwargs), batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+        Echo(split="val", **kwargs), batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
-
+    
+    # input 3x112x112
+    
     with open(os.path.join(output, "log.csv"), "a") as f:
         epoch_resume = 0
         bestLoss = float("inf")
@@ -177,11 +227,11 @@ def run(num_epochs=50,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
 
-                loss, large_inter, large_union, small_inter, small_union = run_epoch(model, dataloaders[phase], phase, optim, device)
+                loss, seg_loss, large_inter, large_union, small_inter, small_union, esv_loss, edv_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloaders[phase], phase, optim, device)
                 overall_dice = 2 * (large_inter.sum() + small_inter.sum()) / (large_union.sum() + large_inter.sum() + small_union.sum() + small_inter.sum())
                 large_dice = 2 * large_inter.sum() / (large_union.sum() + large_inter.sum())
                 small_dice = 2 * small_inter.sum() / (small_union.sum() + small_inter.sum())
-                f.write("{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
+                f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                                     phase,
                                                                     loss,
                                                                     overall_dice,
@@ -191,7 +241,11 @@ def run(num_epochs=50,
                                                                     large_inter.size,
                                                                     sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
                                                                     sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
-                                                                    batch_size))
+                                                                    batch_size,
+                                                                    esv_loss,
+                                                                    sklearn.metrics.r2_score(yhat_esv, y_esv),
+                                                                    edv_loss,
+                                                                    sklearn.metrics.r2_score(yhat_edv, y_edv)))
                 f.flush()
             scheduler.step()
 
@@ -202,6 +256,10 @@ def run(num_epochs=50,
                 'loss': loss,
                 'opt_dict': optim.state_dict(),
                 'scheduler_dict': scheduler.state_dict(),
+                'esv_loss':esv_loss,
+                'esv_r2': sklearn.metrics.r2_score(yhat_esv, y_esv),
+                'edv_loss':edv_loss,
+                'edv_r2': sklearn.metrics.r2_score(yhat_edv, y_edv),
             }
             torch.save(save, os.path.join(output, "checkpoint.pt"))
             if loss < bestLoss:
@@ -213,10 +271,10 @@ def run(num_epochs=50,
         f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
 
         for split in ["val", "test"]:
-            dataset = echonet.datasets.Echo(split=split, **kwargs)
+            dataset = Echo(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, large_inter, large_union, small_inter, small_union = echonet.utils.segmentation.run_epoch(model, dataloader, split, None, device)
+            loss, seg_loss, large_inter, large_union, small_inter, small_union, esv_loss, edv_loss, yhat_esv, yhat_edv, y_esv, y_edv = echonet.utils.segmentation.run_epoch(model, dataloader, split, None, device)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
             large_dice = 2 * large_inter / (large_union + large_inter)
@@ -230,7 +288,12 @@ def run(num_epochs=50,
             f.write("{} dice (large):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(large_inter, large_union, echonet.utils.dice_similarity_coefficient)))
             f.write("{} dice (small):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(small_inter, small_union, echonet.utils.dice_similarity_coefficient)))
             f.flush()
-
+            
+            with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
+                for (filename, pred) in zip(dataset.fnames, (yhat_esv, yhat_edv)):
+                    for (i, p) in enumerate(pred):
+                        g.write("{},{},{:.4f},{:.4f}\n".format(filename, i, p[0],[1]))
+            
             echonet.utils.latexify()
             fig = plt.figure(figsize=(4, 4))
             plt.scatter(small_dice, large_dice, color="k", edgecolor=None, s=1)
@@ -250,7 +313,7 @@ def run(num_epochs=50,
         return x, f, i
     
     # Save labels of all videos (labels folder)
-    dataloader = torch.utils.data.DataLoader(echonet.datasets.Echo(split="all", target_type=["Filename"], length=None, period=1, mean=mean, std=std),
+    dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename"], length=None, period=1, mean=mean, std=std),
                                              batch_size=10, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"), collate_fn=collate_fn)
     if save_segmentation and not all([os.path.isfile(os.path.join(output, "labels", os.path.splitext(f)[0] + ".npy")) for f in dataloader.dataset.fnames]):
         # Save segmentations for all frames
@@ -270,7 +333,7 @@ def run(num_epochs=50,
                     start += offset
 
     # Save size for all videos (videos folder)
-    dataloader = torch.utils.data.DataLoader(echonet.datasets.Echo(split="all", target_type=["Filename", "LargeIndex", "SmallIndex"], length=None, period=1, segmentation=os.path.join(output, "labels")),
+    dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename", "LargeIndex", "SmallIndex"], length=None, period=1, segmentation=os.path.join(output, "labels")),
                                              batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=False)
     if save_segmentation and not all([os.path.isfile(os.path.join(output, "videos", f)) for f in dataloader.dataset.fnames]):
         pathlib.Path(os.path.join(output, "videos")).mkdir(parents=True, exist_ok=True)
@@ -328,7 +391,10 @@ def run(num_epochs=50,
 
 
 
+
+
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
-        modelname="unet",
+        # modelname="deeplabv3_resnet50",
+        modelname="unet_m",
         save_segmentation=False)
