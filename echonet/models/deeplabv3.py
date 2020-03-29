@@ -33,7 +33,7 @@ class DeepLabV3(nn.Module):
     
 class DeepLabV3_multi(nn.Module):
     def __init__(self, backbone, classifier):
-        super(DeepLabV3, self).__init__()
+        super(DeepLabV3_multi, self).__init__()
         self.backbone = backbone
         self.classifier = classifier
         
@@ -43,16 +43,15 @@ class DeepLabV3_multi(nn.Module):
     def forward(self, x):
         input_shape = x.shape[-2:]
         # contract: features is a dict of tensors
-        features = self.backbone(x)
+        xx = self.backbone(x)
 
-        x = features["out"]
-        
         # multi-task
-        ef1 = self.avgpool(x)
+        ef1 = self.avgpool(xx)
+        ef1 = torch.flatten(ef1, 1)
         ef2 = self.fc(ef1)
         
-        x = self.classifier(x)
-        y = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+        xx1 = self.classifier(xx)
+        y = F.interpolate(xx1, size=input_shape, mode='bilinear', align_corners=False)
         
         return y, ef2
 
@@ -131,4 +130,14 @@ def DeepLabV3_main():
 
     classifier = DeepLabHead(2048, 1)
     model = DeepLabV3(backbone, classifier)
+    return model
+
+def DeepLabV3_multi_main():
+    backbone = torchvision.models.__dict__["resnet50"](
+        pretrained=False,
+        replace_stride_with_dilation=[False, True, True])
+    backbone = torch.nn.Sequential(*(list(backbone.children())[:-2]))
+
+    classifier = DeepLabHead(2048, 1)
+    model= DeepLabV3_multi(backbone, classifier)
     return model

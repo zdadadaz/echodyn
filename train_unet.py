@@ -12,7 +12,7 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet_brain import UNet
-
+from echonet.models.deeplabv3 import DeepLabV3_main
 
 
 def run_epoch(model, dataloader, phase, optim, device):
@@ -127,8 +127,9 @@ def run(num_epochs=50,
     if modelname == 'unet':
         model = UNet(in_channels=3, out_channels=1)
     else:
-        model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
-        model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
+        model = DeepLabV3_main()
+        # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
+        # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
@@ -331,4 +332,8 @@ def run(num_epochs=50,
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
         modelname="unet",
+        save_segmentation=False)
+
+run(num_epochs=50,
+        modelname="deeplabv3_org_prove",
         save_segmentation=False)

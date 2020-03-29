@@ -1,6 +1,6 @@
 
 from echonet.models.unet_brain import UNet, UNet_multi
-from echonet.models.deeplabv3 import DeepLabV3_main
+from echonet.models.deeplabv3 import DeepLabV3_main, DeepLabV3_multi_main
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,7 +33,12 @@ input_images = torch.rand(10,3,112,112)
 
 # model = UNet_multi(in_channels=3, out_channels=1)
 # model = UNet(in_channels=3, out_channels=1)
-model = DeepLabV3_main()
+# model = DeepLabV3_main()
+model = DeepLabV3_multi_main()
+# model = torchvision.models.__dict__["resnet50"](
+#         pretrained=False,
+#         replace_stride_with_dilation=[False, True, True])
+# model = torch.nn.Sequential(*(list(model.children())[:-1]))
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # PyTorch v0.4.0

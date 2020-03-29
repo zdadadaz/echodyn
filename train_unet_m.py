@@ -10,6 +10,7 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet_brain import UNet,UNet_multi
+from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 
@@ -173,7 +174,8 @@ def run(num_epochs=50,
     if modelname == "unet_m":
         model = UNet_multi(in_channels=3, out_channels=1)
     else:
-        model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
+        model = DeepLabV3_multi_main()
+        # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
         
     # print(model)
     # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
@@ -397,4 +399,8 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
         # modelname="deeplabv3_resnet50",
         modelname="unet_m",
+        save_segmentation=False)
+
+run(num_epochs=50,
+        modelname="deeplabv3_m",
         save_segmentation=False)
