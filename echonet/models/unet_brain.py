@@ -69,7 +69,7 @@ class UNet(nn.Module):
         dec1 = self.upconv1(dec2)
         dec1 = torch.cat((dec1, enc1), dim=1)
         dec1 = self.decoder1(dec1)
-        return torch.sigmoid(self.conv(dec1))
+        return self.conv(dec1)
 
     @staticmethod
     def _block(in_channels, features, name):
@@ -180,7 +180,7 @@ class UNet_multi(nn.Module):
         dec_EF4 = self.poolEF(dec_EF3)
         EF_out  = self.fc(dec_EF4.view(dec_EF4.size(0),-1)) # 
         
-        return torch.sigmoid(self.conv(dec1)), torch.sigmoid(EF_out)
+        return self.conv(dec1), EF_out
 
     @staticmethod
     def _block(in_channels, features, name):

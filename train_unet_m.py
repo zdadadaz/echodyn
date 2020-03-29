@@ -174,7 +174,7 @@ def run(num_epochs=50,
         model = UNet_multi(in_channels=3, out_channels=1)
     else:
         model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
-
+        
     # print(model)
     # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
