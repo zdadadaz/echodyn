@@ -14,7 +14,6 @@ from echonet.datasets.echo import Echo
 import sklearn.metrics
 
 def run_epoch(model, dataloader, phase, optim, device):
-
     total = 0.
     n = 0
 
@@ -395,7 +394,7 @@ def run(num_epochs=50,
 
 
 
-echonet.config.DATA_DIR = '../db/EchoNet-Dynamic'
+echonet.config.DATA_DIR = '../data/EchoNet-Dynamic'
 run(num_epochs=50,
         # modelname="deeplabv3_resnet50",
         modelname="unet_m",
@@ -404,7 +403,7 @@ run(num_epochs=50,
         device=None,
         n_train_patients=None,
         num_workers=5,
-        batch_size=5,
+        batch_size=20,
         seed=0,
         lr_step_period=None,
         save_segmentation=False)
