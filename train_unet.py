@@ -42,11 +42,9 @@ def run_epoch(model, dataloader, phase, optim, device):
     runningloss_large = 0
     count = 0
     with torch.set_grad_enabled(phase == 'train'):
-        with tqdm.tqdm(total=10) as pbar:
-        # with tqdm.tqdm(total=len(dataloader)) as pbar:
+        # with tqdm.tqdm(total=10) as pbar:
+        with tqdm.tqdm(total=len(dataloader)) as pbar:
             for (i, (_, (large_frame, small_frame, large_trace, small_trace, ef, esv, edv))) in enumerate(dataloader):
-                if count == 10:
-                    break
                 esv = esv.to(device)
                 edv = edv.to(device)
                 y_esv.append(esv.cpu().numpy())
@@ -394,7 +392,8 @@ def run(num_epochs=50,
 
 
 
-echonet.config.DATA_DIR = '../data/EchoNet-Dynamic'
+
+echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
         # modelname="deeplabv3_resnet50",
         modelname="unet_m",
