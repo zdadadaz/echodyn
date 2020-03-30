@@ -276,7 +276,7 @@ def run(num_epochs=50,
             dataset = Echo(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, esv_loss, edv_loss, yhat_esv, yhat_edv, y_esv, y_edv = echonet.utils.segmentation.run_epoch(model, dataloader, split, None, device)
+            loss, seg_loss, large_inter, large_union, small_inter, small_union, esv_loss, edv_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
             large_dice = 2 * large_inter / (large_union + large_inter)
