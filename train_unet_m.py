@@ -292,9 +292,8 @@ def run(num_epochs=50,
             f.flush()
             
             with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-                for (filename, pred) in zip(dataset.fnames, (yhat_esv, yhat_edv)):
-                    for (i, p) in enumerate(pred):
-                        g.write("{},{},{:.4f},{:.4f}\n".format(filename, i, p[0],[1]))
+                for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
+                    g.write("{},{},{:.4f},{:.4f}\n".format(filename, i, pred, yhat_edv[i]))
             
             echonet.utils.latexify()
             fig = plt.figure(figsize=(4, 4))
@@ -393,10 +392,10 @@ def run(num_epochs=50,
 
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(num_epochs=50,
-        # modelname="deeplabv3_resnet50",
-        modelname="unet_m",
-        save_segmentation=False)
+# run(num_epochs=50,
+#         # modelname="deeplabv3_resnet50",
+#         modelname="unet_m",
+#         save_segmentation=False)
 
 run(num_epochs=50,
         modelname="deeplabv3_m",
