@@ -40,8 +40,7 @@ def run_epoch(model, dataloader, phase, optim, device):
     y_esv = []
     yhat_edv = []
     y_edv = []
-    runningloss_small = 0
-    runningloss_large = 0
+    runningloss_ef = 0
     count = 0
     with torch.set_grad_enabled(phase == 'train'):
         # with tqdm.tqdm(total=10) as pbar:
