@@ -13,7 +13,8 @@ import matplotlib.pyplot as plt
 import math
 
 
-def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None):
+# +
+def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=0):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss
 
@@ -28,15 +29,23 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     yhat = []
     y = []
 
+    half_len = int(len(dataloader)/2)
     with torch.set_grad_enabled(phase == 'train'):
         with tqdm.tqdm(total=len(dataloader)) as pbar:
             for (i, (X, outcome)) in enumerate(dataloader):
                 
-                if i % 40==0:
-                    for i in range(torch.cuda.device_count()):
-                        torch.cuda.reset_max_memory_allocated(i)
-                        torch.cuda.reset_max_memory_cached(i)
+#                 if i % 40==0:
+#                     for mm in range(torch.cuda.device_count()):
+#                         torch.cuda.reset_max_memory_allocated(mm)
+#                         torch.cuda.reset_max_memory_cached(mm)
 
+                if flag == 0 and i > half_len:
+                    pbar.update()
+                    continue
+                if flag == 1 and i <= half_len:
+                    pbar.update()
+                    continue
+                    
                 y.append(outcome.numpy())
                 X = X.to(device)
                 outcome = outcome.to(device)
@@ -87,6 +96,8 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     return epoch_loss, yhat, y
 
 
+# -
+
 torch.cuda.empty_cache() 
 
 num_epochs=45
@@ -99,7 +110,7 @@ output=None
 device=None
 n_train_patients=None
 seed=0
-num_workers=1
+num_workers=5
 batch_size=8
 lr_step_period=None
 run_test=False
@@ -151,12 +162,17 @@ for split in ["val", "test"]:
     ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
     dataloader = torch.utils.data.DataLoader(
         ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-    loss, yhat, y = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=1)
-
+    loss, yhat, y = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=1,flag=0)
     with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
         for (filename, pred) in zip(ds.fnames, yhat):
             for (i, p) in enumerate(pred):
                 g.write("{},{},{:.4f}\n".format(filename, i, p))
+    loss, yhat, y = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=1,flag=1)
+    with open(os.path.join(output, "{}_predictions.csv".format(split)), "a") as g:
+        for (filename, pred) in zip(ds.fnames, yhat):
+            for (i, p) in enumerate(pred):
+                g.write("{},{},{:.4f}\n".format(filename, i, p))
+                
     echonet.utils.latexify()
     yhat = np.array(list(map(lambda x: x.mean(), yhat)))
 
