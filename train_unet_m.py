@@ -94,7 +94,8 @@ def run_epoch(model, dataloader, phase, optim, device):
                 loss_ef_small = ef_criteria(ef_small.view(-1)/100, esv/100)
 
                 loss_seg = (loss_large + loss_small) / 2 
-                loss = loss_seg + loss_ef_large + loss_ef_small
+                loss_ef = (loss_ef_large + loss_ef_small)/2
+                loss = loss_seg + loss_ef
                 if phase == 'train':
                     optim.zero_grad()
                     loss.backward()
@@ -102,17 +103,16 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 total += loss_seg.item()
                 n += large_trace.size(0)
-                runningloss_large += loss_ef_large.item() * large_frame.size(0)
-                runningloss_small += loss_ef_small.item() * large_frame.size(0)
-                
+                runningloss_ef += loss_ef.item() * large_frame.size(0)
+
                 p = pos / (pos + neg)
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
                 
                 total_seg = total / n / 112 / 112
                 
-                epoch_loss = runningloss_small/n + runningloss_small/n + total_seg
+                epoch_loss = runningloss_ef/n + total_seg
                 
-                pbar.set_postfix_str("tot: {:.4f}, esv: {:.4f}, edv: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_small/n, runningloss_large/n, total_seg))
+                pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
                 
                 # pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, 
                 #                                                                               loss.item() / large_trace.size(0) / 112 / 112, 
@@ -137,8 +137,7 @@ def run_epoch(model, dataloader, phase, optim, device):
             large_union_list,
             small_inter_list,
             small_union_list,
-            runningloss_small/n, 
-            runningloss_large/n,
+            runningloss_ef/n,
             yhat_esv,
             yhat_edv,
             y_esv,
@@ -229,11 +228,11 @@ def run(num_epochs=50,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
 
-                loss, seg_loss, large_inter, large_union, small_inter, small_union, esv_loss, edv_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloaders[phase], phase, optim, device)
+                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloaders[phase], phase, optim, device)
                 overall_dice = 2 * (large_inter.sum() + small_inter.sum()) / (large_union.sum() + large_inter.sum() + small_union.sum() + small_inter.sum())
                 large_dice = 2 * large_inter.sum() / (large_union.sum() + large_inter.sum())
                 small_dice = 2 * small_inter.sum() / (small_union.sum() + small_inter.sum())
-                f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
+                f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                                     phase,
                                                                     loss,
                                                                     overall_dice,
@@ -244,9 +243,8 @@ def run(num_epochs=50,
                                                                     sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
                                                                     sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
                                                                     batch_size,
-                                                                    esv_loss,
+                                                                    ef_loss,
                                                                     sklearn.metrics.r2_score(yhat_esv, y_esv),
-                                                                    edv_loss,
                                                                     sklearn.metrics.r2_score(yhat_edv, y_edv)))
                 f.flush()
             scheduler.step()
@@ -258,9 +256,8 @@ def run(num_epochs=50,
                 'loss': loss,
                 'opt_dict': optim.state_dict(),
                 'scheduler_dict': scheduler.state_dict(),
-                'esv_loss':esv_loss,
+                'ef_loss':ef_loss,
                 'esv_r2': sklearn.metrics.r2_score(yhat_esv, y_esv),
-                'edv_loss':edv_loss,
                 'edv_r2': sklearn.metrics.r2_score(yhat_edv, y_edv),
             }
             torch.save(save, os.path.join(output, "checkpoint.pt"))
@@ -276,7 +273,7 @@ def run(num_epochs=50,
             dataset = Echo(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, esv_loss, edv_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
+            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
             large_dice = 2 * large_inter / (large_union + large_inter)
@@ -293,7 +290,7 @@ def run(num_epochs=50,
             
             with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
                 for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
-                    g.write("{},{},{:.4f},{:.4f}\n".format(filename, i, pred, yhat_edv[i]))
+                    g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], pred, y_edv[i]))
             
             echonet.utils.latexify()
             fig = plt.figure(figsize=(4, 4))
