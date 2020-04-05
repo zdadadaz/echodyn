@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -262,7 +261,7 @@ def run(num_epochs=50,
         with torch.no_grad():
             for (x, f, i) in tqdm.tqdm(dataloader):
                 x = x.to(device)
-                y = np.concatenate([model(x[i:(i + block), :, :, :])["out"].detach().cpu().numpy() for i in range(0, x.shape[0], block)]).astype(np.float16)
+                y = np.concatenate([model(x[i:(i + block), :, :, :]).detach().cpu().numpy() for i in range(0, x.shape[0], block)]).astype(np.float16)
                 start = 0
                 for (filename, offset) in zip(f, i):
                     np.save(os.path.join(output, "labels", os.path.splitext(filename)[0]), y[start:(start + offset), 0, :, :])
@@ -330,7 +329,7 @@ def run(num_epochs=50,
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
         modelname="unet",
-        save_segmentation=False)
+        save_segmentation=True)
 
 # +
 # run(num_epochs=50,
