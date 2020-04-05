@@ -327,12 +327,12 @@ def run(num_epochs=50,
 
 
 
-# +
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-# run(num_epochs=50,
-#         modelname="unet",
-#         save_segmentation=False)
-
 run(num_epochs=50,
-        modelname="deeplabv3_org_prove",
+        modelname="unet",
         save_segmentation=False)
+
+# +
+# run(num_epochs=50,
+#         modelname="deeplabv3_org_prove",
+#         save_segmentation=False)

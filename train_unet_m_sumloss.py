@@ -41,6 +41,8 @@ def run_epoch(model, dataloader, phase, optim, device):
     yhat_edv = []
     y_edv = []
     runningloss_ef = 0
+    runningloss_ef_large = 0
+    runningloss_ef_small = 0
     count = 0
     with torch.set_grad_enabled(phase == 'train'):
         # with tqdm.tqdm(total=10) as pbar:
@@ -94,7 +96,7 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 loss_seg = (loss_large + loss_small) / 2 
                 loss_ef = (loss_ef_large + loss_ef_small)/2
-                loss = loss_seg + loss_ef
+                loss = loss_seg + loss_ef_large + loss_ef_small
                 if phase == 'train':
                     optim.zero_grad()
                     loss.backward()
@@ -102,16 +104,17 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 total += loss_seg.item()
                 n += large_trace.size(0)
-                runningloss_ef += loss_ef.item() * large_frame.size(0)
+                runningloss_ef_large += loss_ef_large.item() * large_frame.size(0)
+                runningloss_ef_small += loss_ef_small.item() * large_frame.size(0)
 
                 p = pos / (pos + neg)
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
                 
                 total_seg = total / n / 112 / 112
                 
-                epoch_loss = runningloss_ef/n + total_seg
+                epoch_loss = runningloss_ef_large/n +runningloss_ef_small/n+ total_seg
                 
-                pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
+                pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef_large/n, total_seg))
                 
                 # pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, 
                 #                                                                               loss.item() / large_trace.size(0) / 112 / 112, 
@@ -136,7 +139,7 @@ def run_epoch(model, dataloader, phase, optim, device):
             large_union_list,
             small_inter_list,
             small_union_list,
-            runningloss_ef/n,
+            runningloss_ef_large/n,
             yhat_esv,
             yhat_edv,
             y_esv,
