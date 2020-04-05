@@ -255,7 +255,6 @@ def run(num_epochs=50,
     if save_segmentation and not all([os.path.isfile(os.path.join(output, "labels", os.path.splitext(f)[0] + ".npy")) for f in dataloader.dataset.fnames]):
         # Save segmentations for all frames
         # Only run if missing files
-
         pathlib.Path(os.path.join(output, "labels")).mkdir(parents=True, exist_ok=True)
         block = 1024
         model.eval()
@@ -296,35 +295,35 @@ def run(num_epochs=50,
                     peaks = set(scipy.signal.find_peaks(-size, distance=20, prominence=(0.50 * trim_range))[0])
                     for (x, y) in enumerate(size):
                         g.write("{},{},{},{},{},{}\n".format(filename[0], x, y, 1 if x == large_index[i] else 0, 1 if x == small_index[i] else 0, 1 if x in peaks else 0))
-                    fig = plt.figure(figsize=(size.shape[0] / 50 * 1.5, 3))
-                    plt.scatter(np.arange(size.shape[0]) / 50, size, s=1)
-                    ylim = plt.ylim()
-                    for p in peaks:
-                        plt.plot(np.array([p, p]) / 50, ylim, linewidth=1)
-                    plt.ylim(ylim)
-                    plt.title(os.path.splitext(filename[i])[0])
-                    plt.xlabel("Seconds")
-                    plt.ylabel("Size (pixels)")
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(output, "size", os.path.splitext(filename[i])[0] + ".pdf"))
-                    plt.close(fig)
-                    size -= size.min()
-                    size = size / size.max()
-                    size = 1 - size
-                    for (x, y) in enumerate(size):
-                        img[:, :, int(round(115 + 100 * y)), int(round(x / len(size) * 200 + 10))] = 255.
-                        interval = np.array([-3, -2, -1, 0, 1, 2, 3])
-                        for a in interval:
-                            for b in interval:
-                                img[:, x, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+                    # fig = plt.figure(figsize=(size.shape[0] / 50 * 1.5, 3))
+                    # plt.scatter(np.arange(size.shape[0]) / 50, size, s=1)
+                    # ylim = plt.ylim()
+                    # for p in peaks:
+                    #     plt.plot(np.array([p, p]) / 50, ylim, linewidth=1)
+                    # plt.ylim(ylim)
+                    # plt.title(os.path.splitext(filename[i])[0])
+                    # plt.xlabel("Seconds")
+                    # plt.ylabel("Size (pixels)")
+                    # plt.tight_layout()
+                    # plt.savefig(os.path.join(output, "size", os.path.splitext(filename[i])[0] + ".pdf"))
+                    # plt.close(fig)
+                    # size -= size.min()
+                    # size = size / size.max()
+                    # size = 1 - size
+                    # for (x, y) in enumerate(size):
+                    #     img[:, :, int(round(115 + 100 * y)), int(round(x / len(size) * 200 + 10))] = 255.
+                    #     interval = np.array([-3, -2, -1, 0, 1, 2, 3])
+                    #     for a in interval:
+                    #         for b in interval:
+                    #             img[:, x, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
 
-                                if x == large_index[i]:
-                                    img[0, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
-                                if x == small_index[i]:
-                                    img[1, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
-                        if x in peaks:
-                            img[:, :, 200:225, b + int(round(x / len(size) * 200 + 10))] = 255.
-                    echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
+                    #             if x == large_index[i]:
+                    #                 img[0, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+                    #             if x == small_index[i]:
+                    #                 img[1, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+                    #     if x in peaks:
+                    #         img[:, :, 200:225, b + int(round(x / len(size) * 200 + 10))] = 255.
+                    # echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
 
 
 

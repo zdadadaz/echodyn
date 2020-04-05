@@ -169,11 +169,11 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if modelname == "unet_m":
-        model = UNet_multi(in_channels=3, out_channels=1)
-    else:
-        model = DeepLabV3_multi_main()
-        # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
+    # if modelname == "unet_m":
+    model = UNet_multi(in_channels=3, out_channels=1)
+    # else:
+    #     model = DeepLabV3_multi_main()
+    #     # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
         
     # print(model)
     # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
@@ -266,42 +266,42 @@ def run(num_epochs=50,
 
         checkpoint = torch.load(os.path.join(output, "best.pt"))
         model.load_state_dict(checkpoint['state_dict'])
-        f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
+        # f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
 
-        for split in ["val", "test"]:
-            dataset = Echo(split=split, **kwargs)
-            dataloader = torch.utils.data.DataLoader(dataset,
-                                                     batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
+        # for split in ["val", "test"]:
+        #     dataset = Echo(split=split, **kwargs)
+        #     dataloader = torch.utils.data.DataLoader(dataset,
+        #                                              batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+        #     loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
 
-            overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
-            large_dice = 2 * large_inter / (large_union + large_inter)
-            small_dice = 2 * small_inter / (small_union + small_inter)
-            with open(os.path.join(output, "{}_dice.csv".format(split)), "w") as g:
-                g.write("Filename, Overall, Large, Small\n")
-                for (filename, overall, large, small) in zip(dataset.fnames, overall_dice, large_dice, small_dice):
-                    g.write("{},{},{},{}\n".format(filename, overall, large, small))
+        #     overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
+        #     large_dice = 2 * large_inter / (large_union + large_inter)
+        #     small_dice = 2 * small_inter / (small_union + small_inter)
+        #     with open(os.path.join(output, "{}_dice.csv".format(split)), "w") as g:
+        #         g.write("Filename, Overall, Large, Small\n")
+        #         for (filename, overall, large, small) in zip(dataset.fnames, overall_dice, large_dice, small_dice):
+        #             g.write("{},{},{},{}\n".format(filename, overall, large, small))
 
-            f.write("{} dice (overall): {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(np.concatenate((large_inter, small_inter)), np.concatenate((large_union, small_union)), echonet.utils.dice_similarity_coefficient)))
-            f.write("{} dice (large):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(large_inter, large_union, echonet.utils.dice_similarity_coefficient)))
-            f.write("{} dice (small):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(small_inter, small_union, echonet.utils.dice_similarity_coefficient)))
-            f.flush()
+        #     f.write("{} dice (overall): {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(np.concatenate((large_inter, small_inter)), np.concatenate((large_union, small_union)), echonet.utils.dice_similarity_coefficient)))
+        #     f.write("{} dice (large):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(large_inter, large_union, echonet.utils.dice_similarity_coefficient)))
+        #     f.write("{} dice (small):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(small_inter, small_union, echonet.utils.dice_similarity_coefficient)))
+        #     f.flush()
             
-            with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-                for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
-                    g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], pred, y_edv[i]))
+        #     with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
+        #         for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
+        #             g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], pred, y_edv[i]))
             
-            echonet.utils.latexify()
-            fig = plt.figure(figsize=(4, 4))
-            plt.scatter(small_dice, large_dice, color="k", edgecolor=None, s=1)
-            plt.plot([0, 1], [0, 1], color="k", linewidth=1)
-            plt.axis([0, 1, 0, 1])
-            plt.xlabel("Systolic DSC")
-            plt.ylabel("Diastolic DSC")
-            plt.tight_layout()
-            plt.savefig(os.path.join(output, "{}_dice.pdf".format(split)))
-            plt.savefig(os.path.join(output, "{}_dice.png".format(split)))
-            plt.close(fig)
+        #     echonet.utils.latexify()
+        #     fig = plt.figure(figsize=(4, 4))
+        #     plt.scatter(small_dice, large_dice, color="k", edgecolor=None, s=1)
+        #     plt.plot([0, 1], [0, 1], color="k", linewidth=1)
+        #     plt.axis([0, 1, 0, 1])
+        #     plt.xlabel("Systolic DSC")
+        #     plt.ylabel("Diastolic DSC")
+        #     plt.tight_layout()
+        #     plt.savefig(os.path.join(output, "{}_dice.pdf".format(split)))
+        #     plt.savefig(os.path.join(output, "{}_dice.png".format(split)))
+        #     plt.close(fig)
 
     def collate_fn(x):
         x, f = zip(*x)
@@ -321,14 +321,28 @@ def run(num_epochs=50,
         model.eval()
 
         with torch.no_grad():
-            for (x, f, i) in tqdm.tqdm(dataloader):
-                x = x.to(device)
-                y = np.concatenate([model(x[i:(i + block), :, :, :])["out"].detach().cpu().numpy() for i in range(0, x.shape[0], block)]).astype(np.float16)
-                start = 0
-                for (filename, offset) in zip(f, i):
-                    np.save(os.path.join(output, "labels", os.path.splitext(filename)[0]), y[start:(start + offset), 0, :, :])
-                    start += offset
-
+            with open(os.path.join(output, "labels", "{}_predictions.csv".format(modelname)), "a") as gp:
+                for (x, f, i) in tqdm.tqdm(dataloader):
+                    x = x.to(device)
+                    tmp = [model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]
+                    y = []
+                    ef = []
+                    for t in tmp:
+                        y.append(t[0].detach().cpu().numpy())
+                        ef.append(t[1].detach().cpu().numpy())
+                    y = np.concatenate(y)
+                    ef = np.concatenate(ef)
+                    ef = ef.reshape(-1)
+                    # y = np.concatenate([model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]).astype(np.float16)
+                    start = 0
+                    for (filename, offset) in zip(f, i):
+                        count = 0
+                        np.save(os.path.join(output, "labels", os.path.splitext(filename)[0]), y[start:(start + offset), 0, :, :])
+                        for e in ef[start:(start + offset)]:
+                            gp.write("{},{},{:.4f}\n".format(filename, str(count), e))
+                            count+=1
+                        start += offset
+        
     # Save size for all videos (videos folder)
     dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename", "LargeIndex", "SmallIndex"], length=None, period=1, segmentation=os.path.join(output, "labels")),
                                              batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=False)
@@ -356,43 +370,43 @@ def run(num_epochs=50,
                     peaks = set(scipy.signal.find_peaks(-size, distance=20, prominence=(0.50 * trim_range))[0])
                     for (x, y) in enumerate(size):
                         g.write("{},{},{},{},{},{}\n".format(filename[0], x, y, 1 if x == large_index[i] else 0, 1 if x == small_index[i] else 0, 1 if x in peaks else 0))
-                    fig = plt.figure(figsize=(size.shape[0] / 50 * 1.5, 3))
-                    plt.scatter(np.arange(size.shape[0]) / 50, size, s=1)
-                    ylim = plt.ylim()
-                    for p in peaks:
-                        plt.plot(np.array([p, p]) / 50, ylim, linewidth=1)
-                    plt.ylim(ylim)
-                    plt.title(os.path.splitext(filename[i])[0])
-                    plt.xlabel("Seconds")
-                    plt.ylabel("Size (pixels)")
-                    plt.tight_layout()
-                    plt.savefig(os.path.join(output, "size", os.path.splitext(filename[i])[0] + ".pdf"))
-                    plt.close(fig)
-                    size -= size.min()
-                    size = size / size.max()
-                    size = 1 - size
-                    for (x, y) in enumerate(size):
-                        img[:, :, int(round(115 + 100 * y)), int(round(x / len(size) * 200 + 10))] = 255.
-                        interval = np.array([-3, -2, -1, 0, 1, 2, 3])
-                        for a in interval:
-                            for b in interval:
-                                img[:, x, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+                    # fig = plt.figure(figsize=(size.shape[0] / 50 * 1.5, 3))
+                    # plt.scatter(np.arange(size.shape[0]) / 50, size, s=1)
+                    # ylim = plt.ylim()
+                    # for p in peaks:
+                    #     plt.plot(np.array([p, p]) / 50, ylim, linewidth=1)
+                    # plt.ylim(ylim)
+                    # plt.title(os.path.splitext(filename[i])[0])
+                    # plt.xlabel("Seconds")
+                    # plt.ylabel("Size (pixels)")
+                    # plt.tight_layout()
+                    # plt.savefig(os.path.join(output, "size", os.path.splitext(filename[i])[0] + ".pdf"))
+                    # plt.close(fig)
+                    # size -= size.min()
+                    # size = size / size.max()
+                    # size = 1 - size
+                    # for (x, y) in enumerate(size):
+                    #     img[:, :, int(round(115 + 100 * y)), int(round(x / len(size) * 200 + 10))] = 255.
+                    #     interval = np.array([-3, -2, -1, 0, 1, 2, 3])
+                    #     for a in interval:
+                    #         for b in interval:
+                    #             img[:, x, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
 
-                                if x == large_index[i]:
-                                    img[0, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
-                                if x == small_index[i]:
-                                    img[1, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
-                        if x in peaks:
-                            img[:, :, 200:225, b + int(round(x / len(size) * 200 + 10))] = 255.
-                    echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
+                    #             if x == large_index[i]:
+                    #                 img[0, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+                    #             if x == small_index[i]:
+                    #                 img[1, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+                    #     if x in peaks:
+                    #         img[:, :, 200:225, b + int(round(x / len(size) * 200 + 10))] = 255.
+                    # echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
 
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
         # modelname="deeplabv3_resnet50",
-        modelname="unet_m",
-        save_segmentation=False)
+        modelname="m0_unet_m",
+        save_segmentation=True)
 
-run(num_epochs=50,
-        modelname="deeplabv3_m",
-        save_segmentation=False)
+# run(num_epochs=50,
+#         modelname="deeplabv3_m",
+#         save_segmentation=False)
