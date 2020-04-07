@@ -321,7 +321,7 @@ def run(num_epochs=50,
         model.eval()
 
         with torch.no_grad():
-            with open(os.path.join(output, "labels", "{}_predictions.csv".format(modelname)), "a") as gp:
+            with open(os.path.join(output, "{}_EF_predictions.csv".format(modelname)), "w") as gp:
                 for (x, f, i) in tqdm.tqdm(dataloader):
                     x = x.to(device)
                     tmp = [model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]

@@ -8,9 +8,9 @@
 import re
 import os, os.path
 from os.path import splitext
-import pydicom as dicom
+# import pydicom as dicom
 import numpy as np
-from pydicom.uid import UID, generate_uid
+# from pydicom.uid import UID, generate_uid
 import shutil
 from multiprocessing import dummy as multiprocessing
 import time
@@ -45,7 +45,7 @@ if os.path.exists(DestinationForWeights):
 else:
     print("Creating folder at ", DestinationForWeights, " to store weights")
     os.mkdir(DestinationForWeights)
-    
+
 segmentationWeightsURL = 'https://github.com/douyang/EchoNetDynamic/releases/download/v1.0.0/deeplabv3_resnet50_random.pt'
 ejectionFractionWeightsURL = 'https://github.com/douyang/EchoNetDynamic/releases/download/v1.0.0/r2plus1d_18_32_2_pretrained.pt'
 
@@ -55,7 +55,7 @@ if not os.path.exists(os.path.join(DestinationForWeights, os.path.basename(segme
     filename = wget.download(segmentationWeightsURL, out = DestinationForWeights)
 else:
     print("Segmentation Weights already present")
-    
+
 if not os.path.exists(os.path.join(DestinationForWeights, os.path.basename(ejectionFractionWeightsURL))):
     print("Downloading EF Weights, ", ejectionFractionWeightsURL," to ",os.path.join(DestinationForWeights,os.path.basename(ejectionFractionWeightsURL)))
     filename = wget.download(ejectionFractionWeightsURL, out = DestinationForWeights)
@@ -93,7 +93,7 @@ else:
 
 # try some random weights: final_r2+1d_model_regression_EF_sgd_skip1_32frames.pth.tar
 # scp ouyangd@arthur2:~/Echo-Tracing-Analysis/final_r2+1d_model_regression_EF_sgd_skip1_32frames.pth.tar "C:\Users\Windows\Dropbox\Echo Research\CodeBase\EchoNetDynamic-Weights"
-#Weights = "final_r2+1d_model_regression_EF_sgd_skip1_32frames.pth.tar"
+# Weights = "final_r2+1d_model_regression_EF_sgd_skip1_32frames.pth.tar"
 
 
 output = os.path.join(destinationFolder, "cedars_ef_output.csv")
@@ -152,7 +152,7 @@ if not all([os.path.isfile(os.path.join(destinationFolder, "labels", os.path.spl
             for (filename, offset) in zip(f, i):
                 np.save(os.path.join(destinationFolder, "labels", os.path.splitext(filename)[0]), y[start:(start + offset), 0, :, :])
                 start += offset
-                
+
 dataloader = torch.utils.data.DataLoader(echonet.datasets.Echo(split="external_test", external_test_location = videosFolder, target_type=["Filename"], length=None, period=1, segmentation=os.path.join(destinationFolder, "labels")),
                                          batch_size=1, num_workers=8, shuffle=False, pin_memory=False)
 if not all(os.path.isfile(os.path.join(destinationFolder, "videos", f)) for f in dataloader.dataset.fnames):

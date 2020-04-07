@@ -172,7 +172,7 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if modelname == "unet_m":
+    if modelname.split('_')[0] == "unet":
         model = UNet_multi(in_channels=3, out_channels=1)
     else:
         model = DeepLabV3_multi_main()
@@ -324,7 +324,7 @@ def run(num_epochs=50,
         model.eval()
 
         with torch.no_grad():
-            with open(os.path.join(output, "labels", "{}_predictions.csv".format(modelname)), "a") as gp:
+            with open(os.path.join(output, "{}_EF_predictions.csv".format(modelname)), "w") as gp:
                 for (x, f, i) in tqdm.tqdm(dataloader):
                     x = x.to(device)
                     tmp = [model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]
@@ -407,12 +407,12 @@ def run(num_epochs=50,
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
         # modelname="deeplabv3_resnet50",
-        modelname="unet_m",
+        modelname="unet_m_sumloss",
         save_segmentation=True)
 
 run(num_epochs=50,
         # modelname="deeplabv3_resnet50",
-        modelname="deeplabv3_m",
+        modelname="deeplabv3_m_sumloss",
         save_segmentation=True)
 
 # run(num_epochs=50,
