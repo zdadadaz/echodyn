@@ -172,7 +172,7 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if modelname.split('_')[0] == "unet":
+    if "unet" in modelname.split('_'):
         model = UNet_multi(in_channels=3, out_channels=1)
     else:
         model = DeepLabV3_multi_main()

@@ -169,7 +169,7 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if modelname == "unet_m":
+    if "unet" in modelname.split('_'):
         model = UNet_multi(in_channels=3, out_channels=1)
     else:
         model = DeepLabV3_multi_main()
@@ -271,7 +271,7 @@ def run(num_epochs=50,
         for split in ["val", "test"]:
             dataset = Echo(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
-                                                     batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
             loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
