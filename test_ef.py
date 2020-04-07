@@ -101,7 +101,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 torch.cuda.empty_cache() 
 
 num_epochs=45
-modelname="r2plus1d_18"
+modelname="r2plus1d_18_author"
 tasks="EF"
 frames=32
 period=2
@@ -116,7 +116,7 @@ lr_step_period=None
 run_test=False
 run_extra_tests=False
 
-echonet.config.DATA_DIR = '../../../data/EchoNet-Dynamic'
+echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
 ### Seed RNGs ###
 np.random.seed(seed)
@@ -128,7 +128,8 @@ if device is None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
+# fixed model name !!!!!!
+model = torchvision.models.video.__dict__["r2plus1d_18"](pretrained=pretrained)
 
 model.fc = torch.nn.Linear(model.fc.in_features, 1)
 model.fc.bias.data[0] = 55.6

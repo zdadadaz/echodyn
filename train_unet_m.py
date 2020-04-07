@@ -402,12 +402,12 @@ def run(num_epochs=50,
 
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(num_epochs=50,
+run(num_epochs=0,
         # modelname="deeplabv3_resnet50",
         modelname="unet_m",
         save_segmentation=True)
 
-run(num_epochs=50,
+run(num_epochs=0,
         # modelname="deeplabv3_resnet50",
         modelname="deeplabv3_m",
         save_segmentation=True)

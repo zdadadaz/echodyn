@@ -122,7 +122,7 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if modelname.split('_')[0] == 'unet':
+    if modelname == 'unet':
         model = UNet(in_channels=3, out_channels=1)
     else:
         model = DeepLabV3_main()
@@ -327,11 +327,10 @@ def run(num_epochs=50,
 
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(num_epochs=50,
-        modelname="unet",
-        save_segmentation=True)
-
-# +
 # run(num_epochs=50,
-#         modelname="deeplabv3_org_prove",
-#         save_segmentation=False)
+#         modelname="unet",
+#         save_segmentation=True)
+
+run(num_epochs=0,
+        modelname="deeplabv3_auther",
+        save_segmentation=True)
