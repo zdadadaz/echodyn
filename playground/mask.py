@@ -11,9 +11,9 @@ import scipy.signal
 import time
 import matplotlib.pyplot as plt
 # %matplotlib qt
-
+torch.cuda.empty_cache() 
 tasks = ["LargeFrame", "SmallFrame", "LargeTrace", "SmallTrace", "EF", "ESV", "EDV"]
-echonet.config.DATA_DIR = '../../db/EchoNet-Dynamic'
+echonet.config.DATA_DIR = '../../../data/EchoNet-Dynamic'
 # print(echonet.config.DATA_DIR)
 mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
 kwargs = {"target_type": tasks,
@@ -41,5 +41,34 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #         pbar.update()
 #         count += 1
 
-train_dataset = echonet.datasets.Echo(split="all", target_type=["Filename", "LargeIndex", "SmallIndex"], length=None, period=1, segmentation=os.path.join(output, "labels"))
-dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=False)
+frames=32
+period=2
+kwargs = {"target_type": tasks,
+          "mean": mean,
+          "std": std,
+          "length": frames,
+          "period": period,
+          }
+train_dataset = echonet.datasets.Echo(split="val", **kwargs, pad=12)
+
+# train_dataset = echonet.datasets.Echo(split="all", target_type=["EF"], length=None, period=1, segmentation=os.path.join(output, "labels"))
+dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=num_workers, shuffle=False, pin_memory=False)
+pos =0
+for (i, (X, outcome)) in enumerate(dataloader):
+    pos +=1
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
