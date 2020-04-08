@@ -292,7 +292,7 @@ def run(num_epochs=50,
             
             with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
                 for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
-                    g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], pred, y_edv[i]))
+                    g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], y_edv[i]))
             
             echonet.utils.latexify()
             fig = plt.figure(figsize=(4, 4))

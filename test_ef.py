@@ -34,11 +34,6 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
         with tqdm.tqdm(total=len(dataloader)) as pbar:
             for (i, (X, outcome)) in enumerate(dataloader):
                 
-#                 if i % 40==0:
-#                     for mm in range(torch.cuda.device_count()):
-#                         torch.cuda.reset_max_memory_allocated(mm)
-#                         torch.cuda.reset_max_memory_cached(mm)
-
                 if flag == 0 and i > half_len:
                     pbar.update()
                     continue

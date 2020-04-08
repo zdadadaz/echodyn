@@ -11,190 +11,142 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D
+from echonet.models.unet3d import UNet3D, UNet3D_multi
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 
-def run_epoch(model, dataloader, phase, optim, device):
+def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=0):
 
-    total = 0.
-    n = 0
+    criterion = torch.nn.MSELoss()  # Standard L2 loss
 
-    pos = 0
-    neg = 0
-    pos_pix = 0
-    neg_pix = 0
+    runningloss = 0.0
 
     model.train(phase == 'train')
 
-    large_inter = 0
-    large_union = 0
-    small_inter = 0
-    small_union = 0
-    large_inter_list = []
-    large_union_list = []
-    small_inter_list = []
-    small_union_list = []
-    
-    ef_criteria = torch.nn.MSELoss()
-    yhat_esv = []
-    y_esv = []
-    yhat_edv = []
-    y_edv = []
-    runningloss_ef = 0
-    count = 0
+    counter = 0
+    summer = 0
+    summer_squared = 0
+
+    yhat = []
+    y = []
+    half_len = int(len(dataloader)/2)
     with torch.set_grad_enabled(phase == 'train'):
-        # with tqdm.tqdm(total=10) as pbar:
         with tqdm.tqdm(total=len(dataloader)) as pbar:
-            for (i, (_, (large_frame, small_frame, large_trace, small_trace, ef, esv, edv))) in enumerate(dataloader):
-                esv = esv.to(device)
-                edv = edv.to(device)
-                y_esv.append(esv.cpu().numpy())
-                y_edv.append(edv.cpu().numpy())
+            for (i, (X, outcome)) in enumerate(dataloader):
+
+                if flag == 0 and i > half_len:
+                    pbar.update()
+                    continue
+                if flag == 1 and i <= half_len:
+                    pbar.update()
+                    continue
                 
-                pos += (large_trace == 1).sum().item()
-                pos += (small_trace == 1).sum().item()
-                neg += (large_trace == 0).sum().item()
-                neg += (small_trace == 0).sum().item()
+                y.append(outcome.numpy())
+                X = X.to(device)
+                outcome = outcome.to(device)
 
-                pos_pix += (large_trace == 1).sum(0).to("cpu").detach().numpy()
-                pos_pix += (small_trace == 1).sum(0).to("cpu").detach().numpy()
-                neg_pix += (large_trace == 0).sum(0).to("cpu").detach().numpy()
-                neg_pix += (small_trace == 0).sum(0).to("cpu").detach().numpy()
+                average = (len(X.shape) == 6)
+                if average:
+                    batch, n_crops, c, f, h, w = X.shape
+                    X = X.view(-1, c, f, h, w)
 
-                large_frame = large_frame.to(device)
-                large_trace = large_trace.to(device)
-                tmp = model(large_frame)
-                # print(tmp)
-                y_large, ef_large = model(large_frame)
-                loss_large = torch.nn.functional.binary_cross_entropy_with_logits(y_large[:, 0, :, :], large_trace, reduction="sum")
-                large_inter += np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                large_union += np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                large_inter_list.extend(np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-                large_union_list.extend(np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                summer += outcome.sum()
+                summer_squared += (outcome ** 2).sum()
 
-                small_frame = small_frame.to(device)
-                small_trace = small_trace.to(device)
-                y_small, ef_small = model(small_frame)
-                loss_small = torch.nn.functional.binary_cross_entropy_with_logits(y_small[:, 0, :, :], small_trace, reduction="sum")
-                small_inter += np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                small_union += np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-                small_inter_list.extend(np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-                small_union_list.extend(np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                if blocks is None:
+                    outputs = model(X)
+                else:
+                    outputs = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
 
-                pos += (large_trace == 1).sum().item()
-                pos += (small_trace == 1).sum().item()
-                neg += (large_trace == 0).sum().item()
-                neg += (small_trace == 0).sum().item()
-                
-                yhat_esv.append(ef_small.view(-1).to("cpu").detach().numpy())
-                yhat_edv.append(ef_large.view(-1).to("cpu").detach().numpy())
-                
-                loss_ef_large = ef_criteria(ef_large.view(-1)/100, edv/100)
-                loss_ef_small = ef_criteria(ef_small.view(-1)/100, esv/100)
+                if save_all:
+                    yhat.append(outputs.view(-1).to("cpu").detach().numpy())
 
-                loss_seg = (loss_large + loss_small) / 2 
-                loss_ef = (loss_ef_large + loss_ef_small)/2
-                loss = loss_seg + loss_ef
+                if average:
+                    outputs = outputs.view(batch, n_crops, -1).mean(1)
+
+                if not save_all:
+                    yhat.append(outputs.view(-1).to("cpu").detach().numpy())
+
+                loss = criterion(outputs.view(-1), outcome)
+
                 if phase == 'train':
                     optim.zero_grad()
                     loss.backward()
                     optim.step()
 
-                total += loss_seg.item()
-                n += large_trace.size(0)
-                runningloss_ef += loss_ef.item() * large_frame.size(0)
+                runningloss += loss.item() * X.size(0)
+                counter += X.size(0)
 
-                p = pos / (pos + neg)
-                p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
-                
-                total_seg = total / n / 112 / 112
-                
-                epoch_loss = runningloss_ef/n + total_seg
-                
-                pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
-                
-                # pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, 
-                #                                                                               loss.item() / large_trace.size(0) / 112 / 112, 
-                #                                                                               -p * math.log(p) - (1 - p) * math.log(1 - p), 
-                #                                                                               (-p_pix * np.log(p_pix) - (1 - p_pix) * np.log(1 - p_pix)).mean(), 
-                #                                                                               2 * large_inter / (large_union + large_inter), 2 * small_inter / (small_union + small_inter)))
+                epoch_loss = runningloss / counter
+
+                # str(i, runningloss, epoch_loss,  str(((summer_squared) / counter - (summer / counter)**2).item()))
+
+                pbar.set_postfix_str("{:.2f} ({:.2f}) / {:.2f}".format(epoch_loss, loss.item(), summer_squared / counter - (summer / counter) ** 2))
                 pbar.update()
 
-    large_inter_list = np.array(large_inter_list)
-    large_union_list = np.array(large_union_list)
-    small_inter_list = np.array(small_inter_list)
-    small_union_list = np.array(small_union_list)
+    if not save_all:
+        yhat = np.concatenate(yhat)
+    y = np.concatenate(y)
 
-    y_esv = np.concatenate(y_esv)
-    y_edv = np.concatenate(y_edv)
-    yhat_esv = np.concatenate(yhat_esv)
-    yhat_edv = np.concatenate(yhat_edv)
-    
-    return (epoch_loss,
-            total_seg,
-            large_inter_list,
-            large_union_list,
-            small_inter_list,
-            small_union_list,
-            runningloss_ef/n,
-            yhat_esv,
-            yhat_edv,
-            y_esv,
-            y_edv
-            )
+    return epoch_loss, yhat, y
 
-def run(num_epochs=50,
-        modelname="unet",
-        pretrained=False,
+
+def run(num_epochs=45,
+        modelname="r3d_18",
+        tasks="EF",
+        frames=16,
+        period=4,
+        pretrained=True,
         output=None,
         device=None,
         n_train_patients=None,
+        seed=0,
         num_workers=5,
         batch_size=20,
-        seed=0,
         lr_step_period=None,
-        save_segmentation=False):
+        run_test=False,
+        run_extra_tests=False):
 
     ### Seed RNGs ###
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    tasks = ["LargeFrame", "SmallFrame", "LargeTrace", "SmallTrace", "EF", "ESV", "EDV"]
-
     if output is None:
-        output = os.path.join("output", "segmentation", "{}_{}".format(modelname, "pretrained" if pretrained else "random"))
-
+        output = os.path.join("output", "video", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3d" in modelname.split('_'):
-        model = UNet3D(in_channels=3, out_channels=1)
+        model = UNet3D_multi(in_channels=3, out_channels=1)
     else:
-        model = DeepLabV3_multi_main()
-        # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
+        model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
+    
+        model.fc = torch.nn.Linear(model.fc.in_features, 1)
+        model.fc.bias.data[0] = 55.6
         
-    # print(model)
-    # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
 
-    optim = torch.optim.SGD(model.parameters(), lr=1e-5, momentum=0.9)
+    optim = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9, weight_decay=1e-4)
     if lr_step_period is None:
         lr_step_period = math.inf
     scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
 
-    mean, std = echonet.utils.get_mean_and_std(Echo(split="train"))
+# image normalization
+    mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
+
     kwargs = {"target_type": tasks,
               "mean": mean,
-              "std": std
+              "std": std,
+              "length": frames,
+              "period": period,
               }
 
-    train_dataset = echonet.datasets.Echo(split="train", **kwargs)
+# Data preparation
+    train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
         indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
@@ -202,14 +154,13 @@ def run(num_epochs=50,
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"), drop_last=True)
     val_dataloader = torch.utils.data.DataLoader(
-        Echo(split="val", **kwargs), batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+        echonet.datasets.Echo(split="val", **kwargs), batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
-    
-    # input 3x112x112
-    
+
     with open(os.path.join(output, "log.csv"), "a") as f:
         epoch_resume = 0
         bestLoss = float("inf")
+        # read previous trained model
         try:
             checkpoint = torch.load(os.path.join(output, "checkpoint.pt"))
             model.load_state_dict(checkpoint['state_dict'])
@@ -221,6 +172,7 @@ def run(num_epochs=50,
         except FileNotFoundError:
             f.write("Starting run from scratch\n")
 
+        # Train one epoch
         for epoch in range(epoch_resume, num_epochs):
             print("Epoch #{}".format(epoch), flush=True)
             for phase in ['train', 'val']:
@@ -228,38 +180,29 @@ def run(num_epochs=50,
                 for i in range(torch.cuda.device_count()):
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
-
-                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloaders[phase], phase, optim, device)
-                overall_dice = 2 * (large_inter.sum() + small_inter.sum()) / (large_union.sum() + large_inter.sum() + small_union.sum() + small_inter.sum())
-                large_dice = 2 * large_inter.sum() / (large_union.sum() + large_inter.sum())
-                small_dice = 2 * small_inter.sum() / (small_union.sum() + small_inter.sum())
-                f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
-                                                                    phase,
-                                                                    loss,
-                                                                    overall_dice,
-                                                                    large_dice,
-                                                                    small_dice,
-                                                                    time.time() - start_time,
-                                                                    large_inter.size,
-                                                                    sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
-                                                                    sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
-                                                                    batch_size,
-                                                                    ef_loss,
-                                                                    sklearn.metrics.r2_score(yhat_esv, y_esv),
-                                                                    sklearn.metrics.r2_score(yhat_edv, y_edv)))
+                loss, yhat, y = run_epoch(model, dataloaders[phase], phase, optim, device)
+                f.write("{},{},{},{},{},{},{},{},{}\n".format(epoch,
+                                                              phase,
+                                                              loss,
+                                                              sklearn.metrics.r2_score(yhat, y),
+                                                              time.time() - start_time,
+                                                              y.size,
+                                                              sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
+                                                              sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
+                                                              batch_size))
                 f.flush()
             scheduler.step()
 
             save = {
                 'epoch': epoch,
                 'state_dict': model.state_dict(),
+                'period': period,
+                'frames': frames,
                 'best_loss': bestLoss,
                 'loss': loss,
+                'r2': sklearn.metrics.r2_score(yhat, y),
                 'opt_dict': optim.state_dict(),
                 'scheduler_dict': scheduler.state_dict(),
-                'ef_loss':ef_loss,
-                'esv_r2': sklearn.metrics.r2_score(yhat_esv, y_esv),
-                'edv_r2': sklearn.metrics.r2_score(yhat_edv, y_edv),
             }
             torch.save(save, os.path.join(output, "checkpoint.pt"))
             if loss < bestLoss:
@@ -269,151 +212,126 @@ def run(num_epochs=50,
         checkpoint = torch.load(os.path.join(output, "best.pt"))
         model.load_state_dict(checkpoint['state_dict'])
         f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
+        f.flush()
 
-        for split in ["val", "test"]:
-            dataset = Echo(split=split, **kwargs)
-            dataloader = torch.utils.data.DataLoader(dataset,
-                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_esv, yhat_edv, y_esv, y_edv = run_epoch(model, dataloader, split, None, device)
+        # Testing
+        if run_extra_tests:
+            ds = echonet.datasets.Echo(split="nsc", **kwargs, crops="all")
+            test_dataloader = torch.utils.data.DataLoader(
+                ds, batch_size=1, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+            loss, yhat, y = echonet.utils.video.run_epoch(model, test_dataloader, "test", None, device, save_all=True, blocks=100)
 
-            overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
-            large_dice = 2 * large_inter / (large_union + large_inter)
-            small_dice = 2 * small_inter / (small_union + small_inter)
-            with open(os.path.join(output, "{}_dice.csv".format(split)), "w") as g:
-                g.write("Filename, Overall, Large, Small\n")
-                for (filename, overall, large, small) in zip(dataset.fnames, overall_dice, large_dice, small_dice):
-                    g.write("{},{},{},{}\n".format(filename, overall, large, small))
+            with open(os.path.join(output, "nsc_predictions.csv"), "w") as g:
+                for (filename, pred) in zip(ds.fnames, yhat):
+                    for (i, p) in enumerate(pred):
+                        g.write("{},{},{:.4f}\n".format(filename, i, p))
 
-            f.write("{} dice (overall): {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(np.concatenate((large_inter, small_inter)), np.concatenate((large_union, small_union)), echonet.utils.dice_similarity_coefficient)))
-            f.write("{} dice (large):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(large_inter, large_union, echonet.utils.dice_similarity_coefficient)))
-            f.write("{} dice (small):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(small_inter, small_union, echonet.utils.dice_similarity_coefficient)))
-            f.flush()
-            
-            with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-                for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
-                    g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], pred, y_edv[i]))
-            
-            echonet.utils.latexify()
-            fig = plt.figure(figsize=(4, 4))
-            plt.scatter(small_dice, large_dice, color="k", edgecolor=None, s=1)
-            plt.plot([0, 1], [0, 1], color="k", linewidth=1)
-            plt.axis([0, 1, 0, 1])
-            plt.xlabel("Systolic DSC")
-            plt.ylabel("Diastolic DSC")
-            plt.tight_layout()
-            plt.savefig(os.path.join(output, "{}_dice.pdf".format(split)))
-            plt.savefig(os.path.join(output, "{}_dice.png".format(split)))
-            plt.close(fig)
+            ds = echonet.datasets.Echo(split="clinical_test", **kwargs, crops="all")
+            test_dataloader = torch.utils.data.DataLoader(
+                ds, batch_size=1, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+            loss, yhat, y = echonet.utils.video.run_epoch(model, test_dataloader, "test", None, device, save_all=True, blocks=100)
 
-    def collate_fn(x):
-        x, f = zip(*x)
-        i = list(map(lambda t: t.shape[1], x))
-        x = torch.as_tensor(np.swapaxes(np.concatenate(x, 1), 0, 1))
-        return x, f, i
-    
-    # Save labels of all videos (labels folder)
-    dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename"], length=None, period=1, mean=mean, std=std),
-                                             batch_size=10, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"), collate_fn=collate_fn)
-    if save_segmentation and not all([os.path.isfile(os.path.join(output, "labels", os.path.splitext(f)[0] + ".npy")) for f in dataloader.dataset.fnames]):
-        # Save segmentations for all frames
-        # Only run if missing files
+            with open(os.path.join(output, "clinical_test_predictions.csv"), "w") as g:
+                for (filename, pred) in zip(ds.fnames, yhat):
+                    for (i, p) in enumerate(pred):
+                        g.write("{},{},{:.4f}\n".format(filename, i, p))
 
-        pathlib.Path(os.path.join(output, "labels")).mkdir(parents=True, exist_ok=True)
-        block = 1024
-        model.eval()
+            ds = echonet.datasets.Echo(split="full", **kwargs, crops="all")
+            pathlib.Path(os.path.join(output, "full")).mkdir(parents=True, exist_ok=True)
+            for (block, start) in enumerate(range(0, len(ds), 1000)):
+                print("Block #{}".format(block), flush=True)
+                if not os.path.isfile(os.path.join(output, "full", "full_predictions_{}.csv".format(block))):
+                    test_dataloader = torch.utils.data.DataLoader(
+                        torch.utils.data.Subset(ds, range(start, min(start + 1000, len(ds)))),
+                        batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+                    loss, yhat, y = echonet.utils.video.run_epoch(model, test_dataloader, "test", None, device, save_all=True, blocks=100)
 
-        with torch.no_grad():
-            with open(os.path.join(output, "{}_EF_predictions.csv".format(modelname)), "w") as gp:
-                for (x, f, i) in tqdm.tqdm(dataloader):
-                    x = x.to(device)
-                    tmp = [model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]
-                    y = []
-                    ef = []
-                    for t in tmp:
-                        y.append(t[0].detach().cpu().numpy())
-                        ef.append(t[1].detach().cpu().numpy())
-                    y = np.concatenate(y)
-                    ef = np.concatenate(ef)
-                    ef = ef.reshape(-1)
-                    # y = np.concatenate([model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]).astype(np.float16)
-                    start = 0
-                    for (filename, offset) in zip(f, i):
-                        count = 0
-                        np.save(os.path.join(output, "labels", os.path.splitext(filename)[0]), y[start:(start + offset), 0, :, :])
-                        for e in ef[start:(start + offset)]:
-                            gp.write("{},{},{:.4f}\n".format(filename, str(count), e))
-                            count+=1
-                        start += offset
-        
-    # Save size for all videos (videos folder)
-    dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename", "LargeIndex", "SmallIndex"], length=None, period=1, segmentation=os.path.join(output, "labels")),
-                                             batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=False)
-    if save_segmentation and not all([os.path.isfile(os.path.join(output, "videos", f)) for f in dataloader.dataset.fnames]):
-        pathlib.Path(os.path.join(output, "videos")).mkdir(parents=True, exist_ok=True)
-        pathlib.Path(os.path.join(output, "size")).mkdir(parents=True, exist_ok=True)
-        echonet.utils.latexify()
-        with open(os.path.join(output, "size.csv"), "w") as g:
-            g.write("Filename,Frame,Size,HumanLarge,HumanSmall,ComputerSmall\n")
-            for (x, (filename, large_index, small_index)) in tqdm.tqdm(dataloader):
-                x = x.numpy()
-                for i in range(len(filename)):
-                    img = x[i, :, :, :, :].copy()
-                    logit = img[2, :, :, :].copy()
-                    img[1, :, :, :] = img[0, :, :, :]
-                    img[2, :, :, :] = img[0, :, :, :]
-                    img = np.concatenate((img, img), 3)
-                    img[0, :, :, 112:] = np.maximum(255. * (logit > 0), img[0, :, :, 112:])
+                    with open(os.path.join(output, "full", "full_predictions_{}.csv".format(block)), "w") as g:
+                        for (filename, pred) in zip(ds.fnames, yhat):
+                            for (i, p) in enumerate(pred):
+                                g.write("{},{},{:.4f}\n".format(filename, i, p))
+            with open(os.path.join(output, "full_predictions.csv"), "w") as g:
+                for (block, start) in enumerate(range(0, len(ds), 1000)):
+                    with open(os.path.join(output, "full", "full_predictions_{}.csv".format(block)), "r") as h:
+                        for l in h:
+                            g.write(l)
 
-                    img = np.concatenate((img, np.zeros_like(img)), 2)
-                    size = (logit > 0).sum(2).sum(1)
-                    trim_min = sorted(size)[round(len(size) ** 0.05)]
-                    trim_max = sorted(size)[round(len(size) ** 0.95)]
-                    trim_range = trim_max - trim_min
-                    peaks = set(scipy.signal.find_peaks(-size, distance=20, prominence=(0.50 * trim_range))[0])
-                    for (x, y) in enumerate(size):
-                        g.write("{},{},{},{},{},{}\n".format(filename[0], x, y, 1 if x == large_index[i] else 0, 1 if x == small_index[i] else 0, 1 if x in peaks else 0))
-                    # fig = plt.figure(figsize=(size.shape[0] / 50 * 1.5, 3))
-                    # plt.scatter(np.arange(size.shape[0]) / 50, size, s=1)
-                    # ylim = plt.ylim()
-                    # for p in peaks:
-                    #     plt.plot(np.array([p, p]) / 50, ylim, linewidth=1)
-                    # plt.ylim(ylim)
-                    # plt.title(os.path.splitext(filename[i])[0])
-                    # plt.xlabel("Seconds")
-                    # plt.ylabel("Size (pixels)")
-                    # plt.tight_layout()
-                    # plt.savefig(os.path.join(output, "size", os.path.splitext(filename[i])[0] + ".pdf"))
-                    # plt.close(fig)
-                    # size -= size.min()
-                    # size = size / size.max()
-                    # size = 1 - size
-                    # for (x, y) in enumerate(size):
-                    #     img[:, :, int(round(115 + 100 * y)), int(round(x / len(size) * 200 + 10))] = 255.
-                    #     interval = np.array([-3, -2, -1, 0, 1, 2, 3])
-                    #     for a in interval:
-                    #         for b in interval:
-                    #             img[:, x, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
+        # Testing
+        if run_test:
+            for split in ["val", "test"]:
+                dataloader = torch.utils.data.DataLoader(
+                    echonet.datasets.Echo(split=split, **kwargs),
+                    batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+                loss, yhat, y = run_epoch(model, dataloader, split, None, device,flag = 2)
+                f.write("{} (one crop) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, yhat, sklearn.metrics.r2_score)))
+                f.write("{} (one crop) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_absolute_error)))
+                f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_squared_error)))))
+                f.flush()
 
-                    #             if x == large_index[i]:
-                    #                 img[0, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
-                    #             if x == small_index[i]:
-                    #                 img[1, :, a + int(round(115 + 100 * y)), b + int(round(x / len(size) * 200 + 10))] = 255.
-                    #     if x in peaks:
-                    #         img[:, :, 200:225, b + int(round(x / len(size) * 200 + 10))] = 255.
-                    # echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
+                ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
+                dataloader = torch.utils.data.DataLoader(
+                    ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+                yhat = []
+                y = []
+                loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 0)
+                yhat.append(yhat1)
+                y.append(y1)
+                loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
+                yhat.append(yhat1)
+                y.append(y1)
+                yhat = np.concatenate(yhat)
+                y = np.concatenate(y)
+                f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
+                f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
+                f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
+                f.flush()
 
+                with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
+                    for (filename, pred) in zip(ds.fnames, yhat):
+                        for (i, p) in enumerate(pred):
+                            g.write("{},{},{:.4f}\n".format(filename, i, p))
+                echonet.utils.latexify()
+                yhat = np.array(list(map(lambda x: x.mean(), yhat)))
+
+                fig = plt.figure(figsize=(3, 3))
+                lower = min(y.min(), yhat.min())
+                upper = max(y.max(), yhat.max())
+                plt.scatter(y, yhat, color="k", s=1, edgecolor=None, zorder=2)
+                plt.plot([0, 100], [0, 100], linewidth=1, zorder=3)
+                plt.axis([lower - 3, upper + 3, lower - 3, upper + 3])
+                plt.gca().set_aspect("equal", "box")
+                plt.xlabel("Actual EF (%)")
+                plt.ylabel("Predicted EF (%)")
+                plt.xticks([10, 20, 30, 40, 50, 60, 70, 80])
+                plt.yticks([10, 20, 30, 40, 50, 60, 70, 80])
+                plt.grid(color="gainsboro", linestyle="--", linewidth=1, zorder=1)
+                # plt.gca().set_axisbelow(True)
+                plt.tight_layout()
+                plt.savefig(os.path.join(output, "{}_scatter.pdf".format(split)))
+                plt.close(fig)
+
+                fig = plt.figure(figsize=(3, 3))
+                plt.plot([0, 1], [0, 1], linewidth=1, color="k", linestyle="--")
+                for thresh in [35, 40, 45, 50]:
+                    fpr, tpr, _ = sklearn.metrics.roc_curve(y > thresh, yhat)
+                    print(thresh, sklearn.metrics.roc_auc_score(y > thresh, yhat))
+                    plt.plot(fpr, tpr)
+
+                plt.axis([-0.01, 1.01, -0.01, 1.01])
+                plt.xlabel("False Positive Rate")
+                plt.ylabel("True Positive Rate")
+                plt.tight_layout()
+                plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
+                plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(num_epochs=0,
-        # modelname="deeplabv3_resnet50",
-        modelname="unet_m",
-        save_segmentation=True)
+run(modelname="unet3d",
+        frames=32,
+        period=2,
+        pretrained=False,
+        batch_size=8,
+        run_test=True)
 
-run(num_epochs=0,
-        # modelname="deeplabv3_resnet50",
-        modelname="deeplabv3_m",
-        save_segmentation=True)
 
-# run(num_epochs=50,
-#         modelname="deeplabv3_m",
-#         save_segmentation=False)
+
+
