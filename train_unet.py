@@ -49,7 +49,7 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 large_frame = large_frame.to(device)
                 large_trace = large_trace.to(device)
-                y_large = model(large_frame)
+                y_large = model(large_frame)['out']
                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(y_large[:, 0, :, :], large_trace, reduction="sum")
                 large_inter += np.logical_and(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
                 large_union += np.logical_or(y_large[:, 0, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -58,7 +58,7 @@ def run_epoch(model, dataloader, phase, optim, device):
 
                 small_frame = small_frame.to(device)
                 small_trace = small_trace.to(device)
-                y_small = model(small_frame)
+                y_small = model(small_frame)['out']
                 loss_small = torch.nn.functional.binary_cross_entropy_with_logits(y_small[:, 0, :, :], small_trace, reduction="sum")
                 small_inter += np.logical_and(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
                 small_union += np.logical_or(y_small[:, 0, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -125,9 +125,9 @@ def run(num_epochs=50,
     if modelname == 'unet':
         model = UNet(in_channels=3, out_channels=1)
     else:
-        model = DeepLabV3_main()
-        # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
-        # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
+#         model = DeepLabV3_main()
+        model = torchvision.models.segmentation.__dict__['deeplabv3_resnet50'](pretrained=pretrained, aux_loss=False)
+        model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
@@ -158,16 +158,17 @@ def run(num_epochs=50,
         epoch_resume = 0
         bestLoss = float("inf")
         try:
-            checkpoint = torch.load(os.path.join(output, "checkpoint.pt"))
-            model.load_state_dict(checkpoint['state_dict'])
-            optim.load_state_dict(checkpoint['opt_dict'])
-            scheduler.load_state_dict(checkpoint['scheduler_dict'])
-            epoch_resume = checkpoint["epoch"] + 1
-            bestLoss = checkpoint["best_loss"]
-            f.write("Resuming from epoch {}\n".format(epoch_resume))
+            if num_epochs != 0:
+                checkpoint = torch.load(os.path.join(output, "checkpoint.pt"))
+                model.load_state_dict(checkpoint['state_dict'])
+                optim.load_state_dict(checkpoint['opt_dict'])
+                scheduler.load_state_dict(checkpoint['scheduler_dict'])
+                epoch_resume = checkpoint["epoch"] + 1
+                bestLoss = checkpoint["best_loss"]
+                f.write("Resuming from epoch {}\n".format(epoch_resume))
         except FileNotFoundError:
             f.write("Starting run from scratch\n")
-
+        
         for epoch in range(epoch_resume, num_epochs):
             print("Epoch #{}".format(epoch), flush=True)
             for phase in ['train', 'val']:
@@ -212,6 +213,7 @@ def run(num_epochs=50,
         f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
 
         for split in ["val", "test"]:
+            print(split)
             dataset = echonet.datasets.Echo(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
@@ -261,7 +263,7 @@ def run(num_epochs=50,
         with torch.no_grad():
             for (x, f, i) in tqdm.tqdm(dataloader):
                 x = x.to(device)
-                y = np.concatenate([model(x[i:(i + block), :, :, :]).detach().cpu().numpy() for i in range(0, x.shape[0], block)]).astype(np.float16)
+                y = np.concatenate([model(x[i:(i + block), :, :, :])["out"].detach().cpu().numpy() for i in range(0, x.shape[0], block)]).astype(np.float16)
                 start = 0
                 for (filename, offset) in zip(f, i):
                     np.save(os.path.join(output, "labels", os.path.splitext(filename)[0]), y[start:(start + offset), 0, :, :])
