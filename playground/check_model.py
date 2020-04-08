@@ -1,5 +1,6 @@
 
 from echonet.models.unet_brain import UNet, UNet_multi
+from echonet.models.unet3d import UNet3D,UNet3D_multi
 from echonet.models.deeplabv3 import DeepLabV3_main, DeepLabV3_multi_main
 import torch
 import torch.nn as nn
@@ -7,7 +8,7 @@ import torch.nn.functional as F
 from torchsummary import summary
 import torchvision
 # import simulation
-
+torch.cuda.empty_cache() 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -29,12 +30,14 @@ class Net(nn.Module):
 
 # Generate some random images
 # input_images, target_masks = simulation.generate_random_data(112, 112, count=3)
-input_images = torch.rand(10,3,112,112)
+# input_images = torch.rand(10,3,112,112)
+input_images = torch.rand(2,3,32,112,112)
 
 # model = UNet_multi(in_channels=3, out_channels=1)
 # model = UNet(in_channels=3, out_channels=1)
 # model = DeepLabV3_main()
-model = DeepLabV3_multi_main()
+# model = DeepLabV3_multi_main()
+model = UNet3D_multi(in_channels=3, out_channels=1)
 # model = torchvision.models.__dict__["resnet50"](
 #         pretrained=False,
 #         replace_stride_with_dilation=[False, True, True])
@@ -46,9 +49,10 @@ model = model.to(device)
 input_images = input_images.to(device)
 # with torch.set_grad_enabled(False):
 #     out = model(input_images)
-#     # print(out.shape)
+#     print(out.shape)
 
-summary(model, (3,112,112))
+summary(model, (3,32,112,112))
+# summary(model, (3,112,112))
 # summary(model, (1,28,28))
     
     
