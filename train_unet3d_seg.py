@@ -179,8 +179,8 @@ def run(num_epochs=50,
     tasks = [ "LargeTrace", "SmallTrace", "EF"]
 
     if output is None:
-        output = os.path.join("output", "segmentation", "{}_{}".format(modelname, "pretrained" if pretrained else "random"))
-
+#         output = os.path.join("output", "segmentation", "{}_{}".format(modelname, "pretrained" if pretrained else "random"))
+        output = os.path.join("output", "segmentation", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -424,5 +424,13 @@ run(num_epochs=50,
         frames=32,
         period=2,
         pretrained=False,
-        batch_size=1,
+        batch_size=8,
+        save_segmentation=False)
+
+run(num_epochs=50,
+        modelname="unet3D_seg",
+        frames=112,
+        period=1,
+        pretrained=False,
+        batch_size=2,
         save_segmentation=False)
