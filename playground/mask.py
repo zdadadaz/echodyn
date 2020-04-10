@@ -11,6 +11,8 @@ import scipy.signal
 import time
 import matplotlib.pyplot as plt
 # %matplotlib qt
+from echonet.datasets.echo_3d import Echo3D
+
 torch.cuda.empty_cache() 
 tasks = ["LargeFrame", "SmallFrame", "LargeTrace", "SmallTrace", "EF", "ESV", "EDV"]
 echonet.config.DATA_DIR = '../../../data/EchoNet-Dynamic'
@@ -43,21 +45,24 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 frames=32
 period=2
-kwargs = {"target_type": tasks,
+kwargs = {"target_type": ["LargeTrace","SmallTrace","EF"],
           "mean": mean,
           "std": std,
           "length": frames,
           "period": period,
           }
-train_dataset = echonet.datasets.Echo(split="val", **kwargs, pad=12)
+train_dataset = Echo3D(split="val", **kwargs, pad=12)
 
-# train_dataset = echonet.datasets.Echo(split="all", target_type=["EF"], length=None, period=1, segmentation=os.path.join(output, "labels"))
-dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=num_workers, shuffle=False, pin_memory=False)
+# train_dataset = echonet.datasets.Echo(split="all", target_type=["LargeIndex","SmallIndex","EF"], length=None, period=1, segmentation=os.path.join(output, "labels"))
+dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=1, shuffle=False, pin_memory=False)
 pos =0
-for (i, (X, outcome)) in enumerate(dataloader):
+for (i, (X, outcome, fid) ) in enumerate(dataloader):
+    print(fid)
     pos +=1
     
     
+
+
     
     
     

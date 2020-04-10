@@ -33,7 +33,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     half_len = int(len(dataloader)/2)
     with torch.set_grad_enabled(phase == 'train'):
         with tqdm.tqdm(total=len(dataloader)) as pbar:
-            for (i, (X, outcome)) in enumerate(dataloader):
+            for (i, (X, outcome, fid)) in enumerate(dataloader):
 
                 if flag == 0 and i > half_len:
                     pbar.update()
@@ -214,47 +214,6 @@ def run(num_epochs=45,
         f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
         f.flush()
 
-        # Testing
-        if run_extra_tests:
-            ds = echonet.datasets.Echo(split="nsc", **kwargs, crops="all")
-            test_dataloader = torch.utils.data.DataLoader(
-                ds, batch_size=1, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
-            loss, yhat, y = echonet.utils.video.run_epoch(model, test_dataloader, "test", None, device, save_all=True, blocks=100)
-
-            with open(os.path.join(output, "nsc_predictions.csv"), "w") as g:
-                for (filename, pred) in zip(ds.fnames, yhat):
-                    for (i, p) in enumerate(pred):
-                        g.write("{},{},{:.4f}\n".format(filename, i, p))
-
-            ds = echonet.datasets.Echo(split="clinical_test", **kwargs, crops="all")
-            test_dataloader = torch.utils.data.DataLoader(
-                ds, batch_size=1, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
-            loss, yhat, y = echonet.utils.video.run_epoch(model, test_dataloader, "test", None, device, save_all=True, blocks=100)
-
-            with open(os.path.join(output, "clinical_test_predictions.csv"), "w") as g:
-                for (filename, pred) in zip(ds.fnames, yhat):
-                    for (i, p) in enumerate(pred):
-                        g.write("{},{},{:.4f}\n".format(filename, i, p))
-
-            ds = echonet.datasets.Echo(split="full", **kwargs, crops="all")
-            pathlib.Path(os.path.join(output, "full")).mkdir(parents=True, exist_ok=True)
-            for (block, start) in enumerate(range(0, len(ds), 1000)):
-                print("Block #{}".format(block), flush=True)
-                if not os.path.isfile(os.path.join(output, "full", "full_predictions_{}.csv".format(block))):
-                    test_dataloader = torch.utils.data.DataLoader(
-                        torch.utils.data.Subset(ds, range(start, min(start + 1000, len(ds)))),
-                        batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-                    loss, yhat, y = echonet.utils.video.run_epoch(model, test_dataloader, "test", None, device, save_all=True, blocks=100)
-
-                    with open(os.path.join(output, "full", "full_predictions_{}.csv".format(block)), "w") as g:
-                        for (filename, pred) in zip(ds.fnames, yhat):
-                            for (i, p) in enumerate(pred):
-                                g.write("{},{},{:.4f}\n".format(filename, i, p))
-            with open(os.path.join(output, "full_predictions.csv"), "w") as g:
-                for (block, start) in enumerate(range(0, len(ds), 1000)):
-                    with open(os.path.join(output, "full", "full_predictions_{}.csv".format(block)), "r") as h:
-                        for l in h:
-                            g.write(l)
 
         # Testing
         if run_test:
