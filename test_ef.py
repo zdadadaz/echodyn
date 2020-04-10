@@ -155,6 +155,7 @@ scheduler.load_state_dict(checkpoint['scheduler_dict'])
 
 # Testing
 for split in ["val", "test"]:
+    print(split)
     ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
     dataloader = torch.utils.data.DataLoader(
         ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
