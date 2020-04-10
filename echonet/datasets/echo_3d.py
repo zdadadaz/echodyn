@@ -137,8 +137,14 @@ class Echo3D(torch.utils.data.Dataset):
             # tmp  = max(1,last_frameid - (length - 1) * self.period)
             firstframe = min(first_frameid, last_frameid)
             tmp = min(firstframe,fromEnd)
-            start = np.random.choice(tmp, self.crops)
-            # print(start, tmp,first_frameid, fromEnd)
+            try:
+                if firstframe == tmp:
+                    start = 0
+                else:
+                    start = np.random.choice(tmp, self.crops)
+            except:
+                print("tmp is <1 in random choice")
+                print(tmp,firstframe, fromEnd)
         target = []
         
         for t in self.target_type:
