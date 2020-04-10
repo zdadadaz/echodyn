@@ -126,14 +126,17 @@ class Echo3D(torch.utils.data.Dataset):
             video = np.concatenate((video, np.zeros((c, length * self.period - f, h, w), video.dtype)), axis=1)
             c, f, h, w = video.shape
 
+        # small
         first_frameid = int(self.frames[os.path.splitext(self.fnames[index])[0]][0])
+        # large
         last_frameid = int(self.frames[os.path.splitext(self.fnames[index])[0]][-1])
         if self.crops == "all":
             start = np.arange(f - (length - 1) * self.period)
         else:
             fromEnd = max(np.random.choice(f - (length - 1) * self.period, self.crops),1)
             # tmp  = max(1,last_frameid - (length - 1) * self.period)
-            tmp = min(first_frameid,fromEnd)
+            firstframe = min(first_frameid, last_frameid)
+            tmp = min(firstframe,fromEnd)
             start = np.random.choice(tmp, self.crops)
             # print(start, tmp,first_frameid, fromEnd)
         target = []
@@ -197,11 +200,18 @@ class Echo3D(torch.utils.data.Dataset):
                        return vlist
 
             
-            videolist = resizelist(videolist, first_frameid, last_frameid, lendiff)
+            videolist = resizelist(videolist, min(first_frameid, last_frameid), max(first_frameid, last_frameid), lendiff)
             # print(first_frameid, last_frameid, lendiff)
             # print(len(videolist))
             # print(videolist)
-            frameid = [list(videolist).index(first_frameid), list(videolist).index(last_frameid)]
+            try:
+                frameid = [list(videolist).index(first_frameid), list(videolist).index(last_frameid)]
+            except:
+                print("videolist")
+                print(videolist)
+                print("first_frameid", first_frameid)
+                print("last_frameid", last_frameid)
+                
             # print("frameid: ", frameid)
             videolist = np.array(videolist)
             video = video[:, videolist, :, :]
