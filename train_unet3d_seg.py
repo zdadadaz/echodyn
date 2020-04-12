@@ -18,7 +18,7 @@ import sklearn.metrics
 from echonet.datasets.echo import Echo
 from echonet.datasets.echo_3d import Echo3D
 
-def run_epoch(model, dataloader, phase, optim, device, batch_size, blocks=None, flag=3):
+def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
 
     total = 0.
     n = 0
@@ -73,7 +73,7 @@ def run_epoch(model, dataloader, phase, optim, device, batch_size, blocks=None, 
                 neg_pix += (large_trace == 0).sum(0).to("cpu").detach().numpy()
                 neg_pix += (small_trace == 0).sum(0).to("cpu").detach().numpy()
 
-                batchidx = torch.tensor(range(batch_size)).to(device)
+                batchidx = torch.tensor(range(X.shape[0])).to(device)
                 fidlg = fid[1].to(device)
                 fidsm = fid[0].to(device)
                 large_trace = large_trace.to(device)
@@ -246,7 +246,7 @@ def run(num_epochs=50,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
 
-                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloaders[phase], phase, optim, device, batch_size)
+                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloaders[phase], phase, optim, device)
                 overall_dice = 2 * (large_inter.sum() + small_inter.sum()) / (large_union.sum() + large_inter.sum() + small_union.sum() + small_inter.sum())
                 large_dice = 2 * large_inter.sum() / (large_union.sum() + large_inter.sum())
                 small_dice = 2 * small_inter.sum() / (small_union.sum() + small_inter.sum())
@@ -285,11 +285,12 @@ def run(num_epochs=50,
         model.load_state_dict(checkpoint['state_dict'])
         f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
 
-        for split in ["val", "test"]:
+        for split in ["val", "test"]: 
+            print(split)
             dataset = Echo3D(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                       batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloader, split, None, device, batch_size)
+            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloader, split, None, device)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
             large_dice = 2 * large_inter / (large_union + large_inter)
