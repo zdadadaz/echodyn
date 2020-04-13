@@ -79,10 +79,12 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
                 large_trace = large_trace.to(device)
                 small_trace = small_trace.to(device)
                 if blocks is None:
-                    outputs = model(X)
+                    outputs, ef_outputs = model(X)
                 else:
-                    outputs = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
-
+                    tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
+                    outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
+                    ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
+                    
                 # large frame
                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
                 large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -91,7 +93,6 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
                 large_union_list.extend(np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
 
                 # small frame
-                outputs = model(X)
                 loss_small = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidsm, :, :], small_trace, reduction="sum")
                 small_inter += np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
                 small_union += np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -103,14 +104,13 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
                 neg += (large_trace == 0).sum().item()
                 neg += (small_trace == 0).sum().item()
                 
-                # yhat_ef.append(ef_small.view(-1).to("cpu").detach().numpy())
-                yhat_ef.append(ef.cpu().numpy())
+                yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+                # yhat_ef.append(ef.cpu().numpy())
                 
-                # loss_ef_large = ef_criteria(ef_large.view(-1)/100, edv/100)
+                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
                 
                 loss_seg = (loss_large + loss_small) / 2 
-                # loss_ef = (loss_ef_large + loss_ef_small)/2
-                loss = loss_seg 
+                loss = loss_seg + loss_ef
                 if phase == 'train':
                     optim.zero_grad()
                     loss.backward()
@@ -118,14 +118,14 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
 
                 total += loss_seg.item()
                 n += large_trace.size(0)
-                # runningloss_ef += loss_ef.item() * large_frame.size(0)
+                runningloss_ef += loss_ef.item() * large_trace.size(0)
 
                 p = pos / (pos + neg)
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
                 
                 total_seg = total / n / 112 / 112
                 
-                epoch_loss = total_seg
+                epoch_loss = total_seg + runningloss_ef/n
                 
                 pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
                 
@@ -170,7 +170,8 @@ def run(num_epochs=50,
         batch_size=8,
         seed=0,
         lr_step_period=None,
-        save_segmentation=False):
+        save_segmentation=False,
+        run_ef_test=False):
 
     ### Seed RNGs ###
     np.random.seed(seed)
@@ -187,7 +188,7 @@ def run(num_epochs=50,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3D" in modelname.split('_'):
-        model = UNet3D(in_channels=3, out_channels=1)
+        model = UNet3D_multi(in_channels=3, out_channels=1)
     else:
         model = DeepLabV3_multi_main()
         # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
@@ -299,15 +300,20 @@ def run(num_epochs=50,
                 g.write("Filename, Overall, Large, Small\n")
                 for (filename, overall, large, small) in zip(dataset.fnames, overall_dice, large_dice, small_dice):
                     g.write("{},{},{},{}\n".format(filename, overall, large, small))
-
+            
             f.write("{} dice (overall): {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(np.concatenate((large_inter, small_inter)), np.concatenate((large_union, small_union)), echonet.utils.dice_similarity_coefficient)))
             f.write("{} dice (large):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(large_inter, large_union, echonet.utils.dice_similarity_coefficient)))
             f.write("{} dice (small):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(small_inter, small_union, echonet.utils.dice_similarity_coefficient)))
             f.flush()
             
-            # with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-            #     for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_esv)):
-            #         g.write("{},{},{:.4f},{:.4f},{:.4f},{:.4f}\n".format(filename, i, pred,y_esv[i], yhat_edv[i], y_edv[i]))
+            f.write("{} (one crop) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y_ef, yhat_ef, sklearn.metrics.r2_score)))
+            f.write("{} (one crop) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y_ef, yhat_ef, sklearn.metrics.mean_absolute_error)))
+            f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y_ef, yhat_ef, sklearn.metrics.mean_squared_error)))))
+            f.flush()
+
+            with open(os.path.join(output, "{}_predictions_crop1.csv".format(split)), "w") as g:
+                for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_ef)):
+                    g.write("{},{},{:.4f},{:.4f}\n".format(filename, i, pred, y_ef[i]))
             
             echonet.utils.latexify()
             fig = plt.figure(figsize=(4, 4))
@@ -320,6 +326,67 @@ def run(num_epochs=50,
             plt.savefig(os.path.join(output, "{}_dice.pdf".format(split)))
             plt.savefig(os.path.join(output, "{}_dice.png".format(split)))
             plt.close(fig)
+            
+            # ef testing
+            if run_ef_test:
+                ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
+                dataloader = torch.utils.data.DataLoader(
+                    ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+                yhat = []
+                y = []
+                # loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 0)
+                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat1, y1 = run_epoch(model, dataloader, split, 50, device, flag = 0)
+                yhat.append(yhat1)
+                y.append(y1)
+                # loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
+                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat1, y1 = run_epoch(model, dataloader, split, 50, device, flag = 1)
+                yhat.append(yhat1)
+                y.append(y1)
+                yhat = np.concatenate(yhat)
+                y = np.concatenate(y)
+                f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
+                f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
+                f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
+                f.flush()
+
+                with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
+                    for (filename, pred) in zip(ds.fnames, yhat):
+                        for (i, p) in enumerate(pred):
+                            g.write("{},{},{:.4f}\n".format(filename, i, p))
+                echonet.utils.latexify()
+                yhat = np.array(list(map(lambda x: x.mean(), yhat)))
+
+                fig = plt.figure(figsize=(3, 3))
+                lower = min(y.min(), yhat.min())
+                upper = max(y.max(), yhat.max())
+                plt.scatter(y, yhat, color="k", s=1, edgecolor=None, zorder=2)
+                plt.plot([0, 100], [0, 100], linewidth=1, zorder=3)
+                plt.axis([lower - 3, upper + 3, lower - 3, upper + 3])
+                plt.gca().set_aspect("equal", "box")
+                plt.xlabel("Actual EF (%)")
+                plt.ylabel("Predicted EF (%)")
+                plt.xticks([10, 20, 30, 40, 50, 60, 70, 80])
+                plt.yticks([10, 20, 30, 40, 50, 60, 70, 80])
+                plt.grid(color="gainsboro", linestyle="--", linewidth=1, zorder=1)
+                # plt.gca().set_axisbelow(True)
+                plt.tight_layout()
+                plt.savefig(os.path.join(output, "{}_scatter.pdf".format(split)))
+                plt.close(fig)
+
+                fig = plt.figure(figsize=(3, 3))
+                plt.plot([0, 1], [0, 1], linewidth=1, color="k", linestyle="--")
+                for thresh in [35, 40, 45, 50]:
+                    fpr, tpr, _ = sklearn.metrics.roc_curve(y > thresh, yhat)
+                    print(thresh, sklearn.metrics.roc_auc_score(y > thresh, yhat))
+                    plt.plot(fpr, tpr)
+
+                plt.axis([-0.01, 1.01, -0.01, 1.01])
+                plt.xlabel("False Positive Rate")
+                plt.ylabel("True Positive Rate")
+                plt.tight_layout()
+                plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
+                plt.close(fig)
+                        
 
     def collate_fn(x):
         x, f = zip(*x)
@@ -329,20 +396,22 @@ def run(num_epochs=50,
     
     # Save labels of all videos (labels folder)
     dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename"], length=None, period=1, mean=mean, std=std),
-                                             batch_size=10, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"), collate_fn=collate_fn)
+                                             batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"), collate_fn=collate_fn)
     if save_segmentation and not all([os.path.isfile(os.path.join(output, "labels", os.path.splitext(f)[0] + ".npy")) for f in dataloader.dataset.fnames]):
         # Save segmentations for all frames
         # Only run if missing files
 
         pathlib.Path(os.path.join(output, "labels")).mkdir(parents=True, exist_ok=True)
-        block = 1024
+        block = 50
         model.eval()
 
         with torch.no_grad():
-            with open(os.path.join(output, "{}_EF_predictions.csv".format(modelname)), "w") as gp:
+            with open(os.path.join(output, "{}_EF_predictions_cropAll.csv".format(modelname)), "w") as gp:
                 for (x, f, i) in tqdm.tqdm(dataloader):
                     x = x.to(device)
+                    outputs = []
                     tmp = [model(x[i:(i + block), :, :, :]) for i in range(0, x.shape[0], block)]
+                    outputs.append(tmp)
                     y = []
                     ef = []
                     for t in tmp:
@@ -421,12 +490,13 @@ def run(num_epochs=50,
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
-        modelname="unet3D_seg_m",
+        modelname="unet3D_seg",
         frames=32,
         period=2,
         pretrained=False,
         batch_size=8,
-        save_segmentation=False)
+        save_segmentation=False,
+        run_ef_test=False)
 
 # run(num_epochs=50,
 #         modelname="unet3D_seg",

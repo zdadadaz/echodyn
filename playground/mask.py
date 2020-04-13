@@ -51,10 +51,15 @@ kwargs = {"target_type": ["LargeTrace","SmallTrace","EF"],
           "length": frames,
           "period": period,
           }
+
+ds = echonet.datasets.Echo(split="test", **kwargs, crops="all")
+dataloader = torch.utils.data.DataLoader(
+    ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+
 train_dataset = Echo3D(split="val", **kwargs, pad=12)
 
 # train_dataset = echonet.datasets.Echo(split="all", target_type=["LargeIndex","SmallIndex","EF"], length=None, period=1, segmentation=os.path.join(output, "labels"))
-dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=1, shuffle=False, pin_memory=False)
+# dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=2, num_workers=1, shuffle=False, pin_memory=False)
 pos =0
 for (i, (X, outcome, fid) ) in enumerate(dataloader):
     print(fid)
