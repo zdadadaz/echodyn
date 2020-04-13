@@ -328,7 +328,7 @@ def run(num_epochs=50,
         return x, f, i
     
     # Save labels of all videos (labels folder)
-    dataloader = torch.utils.data.DataLoader(Echo3D(split="all", target_type=["Filename"], length=None, period=1, mean=mean, std=std),
+    dataloader = torch.utils.data.DataLoader(Echo(split="all", target_type=["Filename"], length=None, period=1, mean=mean, std=std),
                                              batch_size=10, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"), collate_fn=collate_fn)
     if save_segmentation and not all([os.path.isfile(os.path.join(output, "labels", os.path.splitext(f)[0] + ".npy")) for f in dataloader.dataset.fnames]):
         # Save segmentations for all frames
@@ -420,13 +420,13 @@ def run(num_epochs=50,
 
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(num_epochs=50,
-        modelname="unet3D_seg",
-        frames=32,
-        period=2,
-        pretrained=False,
-        batch_size=8,
-        save_segmentation=False)
+# run(num_epochs=50,
+#         modelname="unet3D_seg",
+#         frames=32,
+#         period=2,
+#         pretrained=False,
+#         batch_size=8,
+#         save_segmentation=False)
 
 run(num_epochs=50,
         modelname="unet3D_seg",
