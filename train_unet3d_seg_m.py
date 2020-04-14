@@ -151,7 +151,7 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
             )
 
 
-def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3):
+def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3, save_all=True):
 
     total = 0.
     n = 0
@@ -177,7 +177,7 @@ def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3):
     y_ef = []
     runningloss_ef = 0
     count = 0
-    half_len = int(len(dataloader)/divide)
+    half_len = int(len(dataloader)/2)
     with torch.set_grad_enabled(phase == 'train'):
         with tqdm.tqdm(total=len(dataloader)) as pbar:
             for (i, (X, ef, fid)) in enumerate(dataloader):
@@ -202,13 +202,16 @@ def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3):
                     ef_outputs = torch.cat([model(X[j:(j + blocks), ...])[1] for j in range(0, X.shape[0], blocks)])
 #                     outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
 #                     ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
-                    
                 yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+#                 print(yhat_ef[i].shape)
+#                 print(y_ef[i].shape)
                 pbar.update()
 
 
-    yhat_ef = np.concatenate(yhat_ef)
+    if not save_all:
+        yhat_ef = np.concatenate(yhat_ef)
     y_ef = np.concatenate(y_ef)
+
     
     return (yhat_ef,
             y_ef
@@ -393,16 +396,16 @@ def run(num_epochs=50,
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 yhat = []
                 y = []
-                # loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 0)
-                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 0)
+                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 0, save_all=True)
                 yhat.append(yhat1)
                 y.append(y1)
-                # loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
-                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 1)
+                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 1, save_all=True)
                 yhat.append(yhat1)
                 y.append(y1)
                 yhat = np.concatenate(yhat)
                 y = np.concatenate(y)
+                print(yhat.shape)
+                print(y.shape)
                 f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
                 f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
                 f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
