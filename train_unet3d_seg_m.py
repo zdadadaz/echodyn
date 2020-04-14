@@ -129,11 +129,6 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
                 
                 pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
                 
-                # pbar.set_postfix_str("{:.4f} ({:.4f}) / {:.4f} {:.4f}, {:.4f}, {:.4f}".format(total / n / 112 / 112, 
-                #                                                                               loss.item() / large_trace.size(0) / 112 / 112, 
-                #                                                                               -p * math.log(p) - (1 - p) * math.log(1 - p), 
-                #                                                                               (-p_pix * np.log(p_pix) - (1 - p_pix) * np.log(1 - p_pix)).mean(), 
-                #                                                                               2 * large_inter / (large_union + large_inter), 2 * small_inter / (small_union + small_inter)))
                 pbar.update()
 
     large_inter_list = np.array(large_inter_list)
@@ -141,10 +136,8 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
     small_inter_list = np.array(small_inter_list)
     small_union_list = np.array(small_union_list)
 
-    # y_esv = np.concatenate(y_esv)
-    # y_edv = np.concatenate(y_edv)
-    # yhat_esv = np.concatenate(yhat_esv)
-    # yhat_edv = np.concatenate(yhat_edv)
+    yhat_ef = np.concatenate(yhat_ef)
+    y_ef = np.concatenate(y_ef)
     
     return (epoch_loss,
             total_seg,
@@ -154,6 +147,70 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
             small_union_list,
             runningloss_ef/n,
             yhat_ef,
+            y_ef
+            )
+
+
+def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3):
+
+    total = 0.
+    n = 0
+
+    pos = 0
+    neg = 0
+    pos_pix = 0
+    neg_pix = 0
+
+    model.train(phase == 'train')
+
+    large_inter = 0
+    large_union = 0
+    small_inter = 0
+    small_union = 0
+    large_inter_list = []
+    large_union_list = []
+    small_inter_list = []
+    small_union_list = []
+    
+    ef_criteria = torch.nn.MSELoss()
+    yhat_ef = []
+    y_ef = []
+    runningloss_ef = 0
+    count = 0
+    half_len = int(len(dataloader)/divide)
+    with torch.set_grad_enabled(phase == 'train'):
+        with tqdm.tqdm(total=len(dataloader)) as pbar:
+            for (i, (X, ef, fid)) in enumerate(dataloader):
+                if flag == 0 and i > half_len:
+                    pbar.update()
+                    continue
+                if flag == 1 and i <= half_len:
+                    pbar.update()
+                    continue
+                
+                ef = ef.to(device)
+                y_ef.append(ef.cpu().numpy())
+                X = X.to(device)
+                average = (len(X.shape) == 6)
+                if average:
+                    batch, n_crops, c, f, h, w = X.shape
+                    X = X.view(-1, c, f, h, w)
+                
+                if blocks is None:
+                    outputs, ef_outputs = model(X)
+                else:
+                    ef_outputs = torch.cat([model(X[j:(j + blocks), ...])[1] for j in range(0, X.shape[0], blocks)])
+#                     outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
+#                     ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
+                    
+                yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+                pbar.update()
+
+
+    yhat_ef = np.concatenate(yhat_ef)
+    y_ef = np.concatenate(y_ef)
+    
+    return (yhat_ef,
             y_ef
             )
 
@@ -291,7 +348,7 @@ def run(num_epochs=50,
             dataset = Echo3D(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                       batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloader, split, None, device)
+            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloader, split, None, device, flag =3)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
             large_dice = 2 * large_inter / (large_union + large_inter)
@@ -310,7 +367,7 @@ def run(num_epochs=50,
             f.write("{} (one crop) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y_ef, yhat_ef, sklearn.metrics.mean_absolute_error)))
             f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y_ef, yhat_ef, sklearn.metrics.mean_squared_error)))))
             f.flush()
-
+            
             with open(os.path.join(output, "{}_predictions_crop1.csv".format(split)), "w") as g:
                 for i, (filename, pred) in enumerate(zip(dataset.fnames, yhat_ef)):
                     g.write("{},{},{:.4f},{:.4f}\n".format(filename, i, pred, y_ef[i]))
@@ -329,17 +386,19 @@ def run(num_epochs=50,
             
             # ef testing
             if run_ef_test:
-                ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
+                tasks = [ "EF"]
+                kwargs["target_type"] = tasks
+                ds = Echo3D(split=split, **kwargs, crops="all")
                 dataloader = torch.utils.data.DataLoader(
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 yhat = []
                 y = []
                 # loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 0)
-                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat1, y1 = run_epoch(model, dataloader, split, 50, device, flag = 0)
+                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 0)
                 yhat.append(yhat1)
                 y.append(y1)
                 # loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
-                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat1, y1 = run_epoch(model, dataloader, split, 50, device, flag = 1)
+                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 1)
                 yhat.append(yhat1)
                 y.append(y1)
                 yhat = np.concatenate(yhat)
@@ -400,7 +459,6 @@ def run(num_epochs=50,
     if save_segmentation and not all([os.path.isfile(os.path.join(output, "labels", os.path.splitext(f)[0] + ".npy")) for f in dataloader.dataset.fnames]):
         # Save segmentations for all frames
         # Only run if missing files
-
         pathlib.Path(os.path.join(output, "labels")).mkdir(parents=True, exist_ok=True)
         block = 50
         model.eval()
@@ -488,15 +546,16 @@ def run(num_epochs=50,
                     # echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
 
 
+torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
-        modelname="unet3D_seg",
+        modelname="unet3D_seg_m",
         frames=32,
         period=2,
         pretrained=False,
         batch_size=8,
         save_segmentation=False,
-        run_ef_test=False)
+        run_ef_test=True)
 
 # run(num_epochs=50,
 #         modelname="unet3D_seg",

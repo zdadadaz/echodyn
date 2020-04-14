@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import math
 
 
-# +
 def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=0):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss
@@ -90,8 +89,6 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
     return epoch_loss, yhat, y
 
-
-# -
 
 torch.cuda.empty_cache() 
 
