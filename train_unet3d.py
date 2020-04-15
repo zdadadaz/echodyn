@@ -16,7 +16,7 @@ from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 
-def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=0):
+def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=-1, divide = 2):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss
 
@@ -30,17 +30,23 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
     yhat = []
     y = []
-    half_len = int(len(dataloader)/2)
+    half_len = int(len(dataloader)/divide)
+    if flag == divide:
+        endRange = len(dataloader)
+    else:
+        endRange = half_len*(flag+1)
+    frontRange = half_len*flag
     with torch.set_grad_enabled(phase == 'train'):
         with tqdm.tqdm(total=len(dataloader)) as pbar:
-            for (i, (X, outcome, fid)) in enumerate(dataloader):
+            for (i, (X, outcome)) in enumerate(dataloader):
 
-                if flag == 0 and i > half_len:
+                if  flag >= 0 and (not (i < endRange and i >= frontRange)):
+                    pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
-                if flag == 1 and i <= half_len:
-                    pbar.update()
-                    continue
+#                 if flag == 1 and i <= half_len:
+#                     pbar.update()
+#                     continue
                 
                 y.append(outcome.numpy())
                 X = X.to(device)
@@ -221,7 +227,7 @@ def run(num_epochs=45,
                 dataloader = torch.utils.data.DataLoader(
                     echonet.datasets.Echo(split=split, **kwargs),
                     batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
-                loss, yhat, y = run_epoch(model, dataloader, split, None, device,flag = 2)
+                loss, yhat, y = run_epoch(model, dataloader, split, None, device)
                 f.write("{} (one crop) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, yhat, sklearn.metrics.r2_score)))
                 f.write("{} (one crop) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_absolute_error)))
                 f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_squared_error)))))
@@ -232,12 +238,14 @@ def run(num_epochs=45,
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 yhat = []
                 y = []
-                loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 0)
-                yhat.append(yhat1)
-                y.append(y1)
-                loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
-                yhat.append(yhat1)
-                y.append(y1)
+                divide= 3
+                for d in range(divide):
+                    loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = d, divide = divide)
+                    yhat.append(yhat1)
+                    y.append(y1)
+#                 loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
+#                 yhat.append(yhat1)
+#                 y.append(y1)
                 yhat = np.concatenate(yhat)
                 y = np.concatenate(y)
                 f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
@@ -294,7 +302,7 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(modelname="r2plus1d_18",
         frames=32,
         period=2,
-        pretrained=False,
+        pretrained=True,
         batch_size=8,
         run_test=True)
 

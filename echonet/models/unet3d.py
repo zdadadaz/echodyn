@@ -114,8 +114,8 @@ class UNet3D(nn.Module):
                 ]
             )
         )
-        
-        
+
+
 class UNet3D_multi(nn.Module):
     # acdc 3x32x112x112
     def __init__(self, in_channels=32, out_channels=1, init_features=30):

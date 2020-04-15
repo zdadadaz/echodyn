@@ -348,6 +348,7 @@ def run(num_epochs=50,
 
         for split in ["val", "test"]: 
             print(split)
+            kwargs["target_type"] = tasks
             dataset = Echo3D(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                       batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
@@ -389,8 +390,7 @@ def run(num_epochs=50,
             
             # ef testing
             if run_ef_test:
-                tasks = [ "EF"]
-                kwargs["target_type"] = tasks
+                kwargs["target_type"] = [ "EF"]
                 ds = Echo3D(split=split, **kwargs, crops="all")
                 dataloader = torch.utils.data.DataLoader(
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
@@ -404,8 +404,8 @@ def run(num_epochs=50,
                 y.append(y1)
                 yhat = np.concatenate(yhat)
                 y = np.concatenate(y)
-                print(yhat.shape)
-                print(y.shape)
+#                 print(yhat.shape)
+#                 print(y.shape)
                 f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
                 f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
                 f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
