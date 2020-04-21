@@ -198,7 +198,7 @@ class UNet3D_multi(nn.Module):
 # +
 class UNet3D_ef(nn.Module):
     # acdc 3x32x112x112
-    def __init__(self, in_channels=32, out_channels=1, init_features=30):
+    def __init__(self, in_channels=3, out_channels=1, init_features=30):
         super(UNet3D_ef, self).__init__()
         features = init_features
         self.encoder1 = UNet3D._block(in_channels, features, name="enc1")
@@ -233,9 +233,10 @@ class UNet3D_ef(nn.Module):
 #             in_channels=features, out_channels=out_channels, kernel_size=1
 #         )       
 #         self.fc = nn.Linear(480*2*7*7, 1)
-        self.fc = nn.Sequential(nn.Linear(480*2*7*7, 120*2*7*7),
-                                nn.Linear(120*2*7*7, 30*2*7*7),
-                               nn.Linear(30*2*7*7, 1))
+        self.fc = nn.Sequential(nn.Linear(480*2*7*7, 60*2*7*7),
+                                 nn.ReLU(),
+                                 nn.Linear(60*2*7*7, 1)
+                                ) 
         
     def forward(self, x):
         enc1 = self.encoder1(x)
@@ -258,7 +259,6 @@ class UNet3D_ef(nn.Module):
 #         dec1 = torch.cat((dec1, enc1), dim=1)
 #         dec1 = self.decoder1(dec1)
         
-        # multi task
         Ef_out = self.fc(bottleneck.view(bottleneck.size(0),-1))
         
         return Ef_out

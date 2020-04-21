@@ -16,6 +16,7 @@ from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 
+# +
 def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=-1, divide = 2):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss
@@ -41,6 +42,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
             for (i, (X, outcome)) in enumerate(dataloader):
 
                 if  flag >= 0 and (not (i < endRange and i >= frontRange)):
+                    print("qq")
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
@@ -70,10 +72,12 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
                 if average:
                     outputs = outputs.view(batch, n_crops, -1).mean(1)
-
+                    
                 if not save_all:
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
 
+#                 print(outputs.view(-1))
+#                 print(outcome)
                 loss = criterion(outputs.view(-1), outcome)
 
                 if phase == 'train':
@@ -97,6 +101,8 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
     return epoch_loss, yhat, y
 
+
+# -
 
 def run(num_epochs=45,
         modelname="r3d_18",
@@ -187,6 +193,9 @@ def run(num_epochs=45,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
                 loss, yhat, y = run_epoch(model, dataloaders[phase], phase, optim, device)
+#                 print(yhat.shape)
+#                 print(y.shape)
+                
                 f.write("{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                               phase,
                                                               loss,
@@ -292,7 +301,7 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(modelname="unet3d_lr3",
+run(modelname="unet3d_lr2",
         frames=32,
         period=2,
         pretrained=False,
