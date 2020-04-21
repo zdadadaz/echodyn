@@ -11,7 +11,7 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D, UNet3D_multi
+from echonet.models.unet3d import UNet3D, UNet3D_ef
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
@@ -125,7 +125,7 @@ def run(num_epochs=45,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3d" in modelname.split('_'):
-        model = UNet3D_multi(in_channels=3, out_channels=1)
+        model = UNet3D_ef(in_channels=3, out_channels=1)
     else:
         model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
     
@@ -292,18 +292,20 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-# run(modelname="unet3d",
-#         frames=32,
-#         period=2,
-#         pretrained=False,
-#         batch_size=8,
-#         run_test=True)
-
-run(modelname="r2plus1d_18",
+run(modelname="unet3d_lr3",
         frames=32,
         period=2,
-        pretrained=True,
+        pretrained=False,
         batch_size=8,
         run_test=True)
+
+# +
+# run(modelname="r2plus1d_18",
+#         frames=32,
+#         period=2,
+#         pretrained=True,
+#         batch_size=8,
+#         run_test=True)
+# -
 
 
