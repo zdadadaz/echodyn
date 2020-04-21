@@ -193,8 +193,6 @@ def run(num_epochs=45,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
                 loss, yhat, y = run_epoch(model, dataloaders[phase], phase, optim, device)
-#                 print(yhat.shape)
-#                 print(y.shape)
                 
                 f.write("{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                               phase,

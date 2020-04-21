@@ -11,7 +11,7 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D, UNet3D_multi
+from echonet.models.unet3d import UNet3D, UNet3D_multi, UNet3D_multi_1,UNet3D_multi_2,UNet3D_multi_3,UNet3D_multi_4
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
 
 import sklearn.metrics
@@ -248,7 +248,17 @@ def run(num_epochs=50,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3D" in modelname.split('_'):
-        model = UNet3D_multi(in_channels=3, out_channels=1)
+        notshare = int(modelname[-1])
+        print("notshare",notshare)
+        if notshare == 1:
+            model = UNet3D_multi_1(in_channels=3, out_channels=1)
+        elif notshare == 2:
+            model = UNet3D_multi_2(in_channels=3, out_channels=1)
+        elif notshare == 3:
+            model = UNet3D_multi_3(in_channels=3, out_channels=1)
+        elif notshare == 4:
+            model = UNet3D_multi_4(in_channels=3, out_channels=1)
+#         model = UNet3D_multi(in_channels=3, out_channels=1)
     else:
         model = DeepLabV3_multi_main()
         # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
@@ -549,16 +559,21 @@ def run(num_epochs=50,
                     # echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
 
 
+# +
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(num_epochs=50,
-        modelname="unet3D_seg_m",
-        frames=32,
-        period=2,
-        pretrained=False,
-        batch_size=8,
-        save_segmentation=False,
-        run_ef_test=True)
+
+for i in range(4,0,-1):
+    modelname = "unet3D_seg_m_notshare" + str(i)
+    run(num_epochs=50,
+            modelname=modelname,
+            frames=32,
+            period=2,
+            pretrained=False,
+            batch_size=8,
+            save_segmentation=False,
+            run_ef_test=True)
+# -
 
 # run(num_epochs=50,
 #         modelname="unet3D_seg",
