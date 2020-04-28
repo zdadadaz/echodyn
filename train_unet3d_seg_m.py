@@ -18,7 +18,7 @@ import sklearn.metrics
 from echonet.datasets.echo import Echo
 from echonet.datasets.echo_3d import Echo3D
 
-def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
+def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
 
     total = 0.
     n = 0
@@ -104,10 +104,17 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
                 neg += (large_trace == 0).sum().item()
                 neg += (small_trace == 0).sum().item()
                 
-                yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
-                # yhat_ef.append(ef.cpu().numpy())
+                if save_all:
+                    yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+
+                if average:
+                    ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
+                    
+                if not save_all:
+                    yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
                 
-                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
+                loss_ef = ef_criteria(ef_outputs.view(-1), ef)
+#                 loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
                 
                 loss_seg = (loss_large + loss_small) / 2 
                 loss = loss_seg + loss_ef
@@ -136,7 +143,8 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
     small_inter_list = np.array(small_inter_list)
     small_union_list = np.array(small_union_list)
 
-    yhat_ef = np.concatenate(yhat_ef)
+    if not save_all:
+        yhat_ef = np.concatenate(yhat_ef)
     y_ef = np.concatenate(y_ef)
     
     return (epoch_loss,
@@ -151,7 +159,7 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
             )
 
 
-def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3, save_all=True):
+def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=-1, divide = 2, save_all=True):
 
     total = 0.
     n = 0
@@ -177,17 +185,21 @@ def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=3, s
     y_ef = []
     runningloss_ef = 0
     count = 0
-    half_len = int(len(dataloader)/2)
+    half_len = int(len(dataloader)/divide)
+    if flag == divide:
+        endRange = len(dataloader)
+    else:
+        endRange = half_len*(flag+1)
+    frontRange = half_len*flag
     with torch.set_grad_enabled(phase == 'train'):
         with tqdm.tqdm(total=len(dataloader)) as pbar:
             for (i, (X, ef, fid)) in enumerate(dataloader):
-                if flag == 0 and i > half_len:
+                if  flag >= 0 and (not (i < endRange and i >= frontRange)):
+                    print("qq")
+                    pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
-                if flag == 1 and i <= half_len:
-                    pbar.update()
-                    continue
-                
+
                 ef = ef.to(device)
                 y_ef.append(ef.cpu().numpy())
                 X = X.to(device)
@@ -406,12 +418,11 @@ def run(num_epochs=50,
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 yhat = []
                 y = []
-                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 0, save_all=True)
-                yhat.append(yhat1)
-                y.append(y1)
-                yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = 1, save_all=True)
-                yhat.append(yhat1)
-                y.append(y1)
+                divide= 3
+                for d in range(divide):
+                    loss, yhat1, y1 = run_epoch_EF(model, dataloader, split, None, device, blocks=50, flag = d, divide = divide, save_all=True)
+                    yhat.append(yhat1)
+                    y.append(y1)
                 yhat = np.concatenate(yhat)
                 y = np.concatenate(y)
 #                 print(yhat.shape)
@@ -563,7 +574,7 @@ def run(num_epochs=50,
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-for i in range(4,0,-1):
+for i in range(2,0,-1):
     modelname = "unet3D_seg_m_notshare" + str(i)
     run(num_epochs=50,
             modelname=modelname,
@@ -572,7 +583,7 @@ for i in range(4,0,-1):
             pretrained=False,
             batch_size=8,
             save_segmentation=False,
-            run_ef_test=True)
+            run_ef_test=False)
 # -
 
 # run(num_epochs=50,
