@@ -23,7 +23,7 @@ def calcflow(video):
     nOuterFPIterations = 7
     nInnerFPIterations = 1
     nSORIterations = 30
-    colType = 0  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
+    colType = 1  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
     flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
@@ -50,7 +50,7 @@ video = echonet.utils.loadvideo('/home/zdadadaz/Desktop/course/medical/data/Echo
 # plt.imshow(mat11)
 # plt.savefig('test11.png')
 
-aa = calcflow(video[:,:10,:,:])
+aa = calcflow(video[:,:50,:,:])
 qq = (aa)
 plt.imshow(np.uint8(qq[0,0,...]*255))
 plt.savefig('test.png')

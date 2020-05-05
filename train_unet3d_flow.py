@@ -582,7 +582,7 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
 run(num_epochs=50,
         modelname="unet3D_flow",
-        frames=112,
+        frames=32,
         period=2,
         pretrained=False,
         batch_size=8,

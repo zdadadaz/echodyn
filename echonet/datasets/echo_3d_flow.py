@@ -5,7 +5,7 @@ import os
 import numpy as np
 import collections
 import skimage.draw
-import pyflow
+from pyflow import pyflow
 
 def rgb2gray(rgb):
     return np.dot(np.transpose(rgb,(1,2,0)), [0.2989, 0.5870, 0.1140])
@@ -23,7 +23,7 @@ def calcflow(video):
     nOuterFPIterations = 7
     nInnerFPIterations = 1
     nSORIterations = 30
-    colType = 0  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
+    colType = 1  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
     flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
@@ -201,7 +201,7 @@ class Echo3Df(torch.utils.data.Dataset):
                 mask = np.zeros((video.shape[2], video.shape[3]), np.float32)
                 mask[r, c] = 1
                 target.append(mask)
-            else:
+            elif t == "EF":
                 if self.split == "clinical_test" or self.split == "external_test":
                     target.append(np.float32(0))
                 else:
@@ -211,10 +211,7 @@ class Echo3Df(torch.utils.data.Dataset):
             seg = np.load(os.path.join(self.segmentation, os.path.splitext(self.fnames[index])[0] + ".npy"))
             video[2, :seg.shape[0], :, :] = seg
 
-        if target != []:
-            target = tuple(target) if len(target) > 1 else target[0]
-            if self.target_transform is not None:
-                target = self.target_transform(target)
+        print(self.fnames[index])
 
         # Select random crops
         if self.crops==1:
@@ -261,11 +258,16 @@ class Echo3Df(torch.utils.data.Dataset):
         # else:
         if self.crops != 1:
             video = np.stack(video)
-        
+        # print(video.shape)
         for t in self.target_type:
             if t == 'flow':
                 target.append(calcflow(video))
         
+        if target != []:
+            target = tuple(target) if len(target) > 1 else target[0]
+            if self.target_transform is not None:
+                target = self.target_transform(target)
+                
         if self.pad is not None:
             c, l, h, w = video.shape
             temp = np.zeros((c, l, h + 2 * self.pad, w + 2 * self.pad), dtype=video.dtype)

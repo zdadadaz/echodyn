@@ -6,5 +6,5 @@ save_non_project_files = False
 
 [main]
 version = 0.2.0
-recent_files = ['train_unet3d.py', 'train_unet3d_seg.py', 'train_unet_m.py', 'train_unet3d_flow.py', 'echonet/datasets/echo_3d_flow.py', 'playground/tmp.py', 'pyflow/demo.py']
+recent_files = ['train_unet3d.py', 'train_unet3d_seg.py', 'train_unet_m.py', 'train_unet3d_flow.py', 'echonet/datasets/echo_3d_flow.py', 'playground/tmp.py']
 
