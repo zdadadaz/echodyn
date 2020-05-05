@@ -10,3 +10,6 @@ output/
 .vscode/*
 .spyproject/config/*
 .Rproj.user
+.directory
+.spyproject/*
+scripts/med_script/*
