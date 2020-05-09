@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# -*- coding: utf-8 -*-
-
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -20,9 +18,7 @@ from echonet.datasets.echo import Echo
 from echonet.datasets.echo_3d import Echo3D
 from echonet.datasets.echo_3d_flow import Echo3Df
 
-
-# +
-def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
+def run_epoch_withflow(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
 
     total = 0.
     n = 0
@@ -133,10 +129,168 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                     optim.zero_grad()
                     loss.backward()
                     optim.step()
-
-                total += loss_seg.item()
+                    
                 n += large_trace.size(0)
-                runningloss_ef += loss_ef.item() * large_trace.size(0)
+                # total += loss_seg.item()
+                # runningloss_ef += loss_ef.item() * large_trace.size(0)
+
+                p = pos / (pos + neg)
+                p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
+                
+                total_seg = total / n / 112 / 112
+                
+#                 epoch_loss = total_seg + runningloss_ef/n
+                total_flow += loss_flow.item()
+                epoch_loss = total_flow/ n / 112 / 112
+                
+                pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
+                
+                pbar.update()
+
+#     large_inter_list = np.array(large_inter_list)
+#     large_union_list = np.array(large_union_list)
+#     small_inter_list = np.array(small_inter_list)
+#     small_union_list = np.array(small_union_list)
+
+#     if not save_all:
+#         yhat_ef = np.concatenate(yhat_ef)
+#     y_ef = np.concatenate(y_ef)
+    
+#     for flow only
+    large_inter_list = []
+    large_union_list = []
+    small_inter_list = []
+    small_union_list = []
+    yhat_ef = []
+    
+    return (epoch_loss,
+            total_seg,
+            large_inter_list,
+            large_union_list,
+            small_inter_list,
+            small_union_list,
+            runningloss_ef/n,
+            yhat_ef,
+            y_ef
+            )
+
+def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
+
+    total = 0.
+    n = 0
+
+    pos = 0
+    neg = 0
+    pos_pix = 0
+    neg_pix = 0
+
+    model.train(phase == 'train')
+
+    large_inter = 0
+    large_union = 0
+    small_inter = 0
+    small_union = 0
+    large_inter_list = []
+    large_union_list = []
+    small_inter_list = []
+    small_union_list = []
+    
+    ef_criteria = torch.nn.MSELoss()
+    yhat_ef = []
+    y_ef = []
+    runningloss_ef = 0
+    total_flow = 0
+    count = 0
+    half_len = int(len(dataloader)/2)
+    with torch.set_grad_enabled(phase == 'train'):
+        with tqdm.tqdm(total=len(dataloader)) as pbar:
+            for (i, (X, (large_trace, small_trace, ef, flow), fid)) in enumerate(dataloader):
+                if flag == 0 and i > half_len:
+                    pbar.update()
+                    continue
+                if flag == 1 and i <= half_len:
+                    pbar.update()
+                    continue
+                
+                flow = flow.to(device)
+                ef = ef.to(device)
+                y_ef.append(ef.cpu().numpy())
+                X = X.to(device)
+                average = (len(X.shape) == 6)
+                if average:
+                    batch, n_crops, c, f, h, w = X.shape
+                    X = X.view(-1, c, f, h, w)
+                    
+                pos += (large_trace == 1).sum().item()
+                pos += (small_trace == 1).sum().item()
+                neg += (large_trace == 0).sum().item()
+                neg += (small_trace == 0).sum().item()
+
+                pos_pix += (large_trace == 1).sum(0).to("cpu").detach().numpy()
+                pos_pix += (small_trace == 1).sum(0).to("cpu").detach().numpy()
+                neg_pix += (large_trace == 0).sum(0).to("cpu").detach().numpy()
+                neg_pix += (small_trace == 0).sum(0).to("cpu").detach().numpy()
+
+                batchidx = torch.tensor(range(X.shape[0])).to(device)
+                fidlg = fid[1].to(device)
+                fidsm = fid[0].to(device)
+                large_trace = large_trace.to(device)
+                small_trace = small_trace.to(device)
+                if blocks is None:
+                    # outputs, ef_outputs = model(X)
+                    outputs_flow = model(X)
+                else:
+                    tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
+                    outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
+                    ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
+                    
+                # Endpoint error: eucline distance : input (batch,, dim, frame, w, h)
+                loss_flow = torch.norm(outputs_flow[:,:,:-1,:,:] - flow,2,1) # normalize dimension : 2 for x, y
+                loss_flow = torch.norm(loss_flow,2,1) # normalize frames 32
+                loss_flow = loss_flow.sum()
+                
+#                 # large frame
+#                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
+#                 large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+#                 large_union += np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+#                 large_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+#                 large_union_list.extend(np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+
+#                 # small frame
+#                 loss_small = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidsm, :, :], small_trace, reduction="sum")
+#                 small_inter += np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+#                 small_union += np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+#                 small_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+#                 small_union_list.extend(np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+
+#                 pos += (large_trace == 1).sum().item()
+#                 pos += (small_trace == 1).sum().item()
+#                 neg += (large_trace == 0).sum().item()
+#                 neg += (small_trace == 0).sum().item()
+                
+#                 if save_all:
+#                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+
+#                 if average:
+#                     ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
+                    
+#                 if not save_all:
+#                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+                
+#                 loss_ef = ef_criteria(ef_outputs.view(-1), ef)
+# #                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
+                
+#                 loss_seg = (loss_large + loss_small) / 2 
+#                 loss = loss_seg + loss_ef
+                loss = loss_flow
+                if phase == 'train':
+                    optim.zero_grad()
+                    loss.backward()
+                    optim.step()
+                    
+                n += large_trace.size(0)
+                # total += loss_seg.item()
+                # runningloss_ef += loss_ef.item() * large_trace.size(0)
 
                 p = pos / (pos + neg)
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
@@ -179,7 +333,6 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
             )
 
 
-# -
 
 def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=-1, divide = 2, save_all=True):
 
@@ -600,9 +753,9 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
 run(num_epochs=50,
         modelname="unet3D_flow",
-        frames=32,
+        frames=16,
         period=2,
         pretrained=False,
-        batch_size=8,
+        batch_size=1,
         save_segmentation=False,
         run_ef_test=False)

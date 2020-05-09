@@ -211,7 +211,7 @@ class Echo3Df(torch.utils.data.Dataset):
             seg = np.load(os.path.join(self.segmentation, os.path.splitext(self.fnames[index])[0] + ".npy"))
             video[2, :seg.shape[0], :, :] = seg
 
-        print(self.fnames[index])
+        # print(self.fnames[index])
 
         # Select random crops
         if self.crops==1:
