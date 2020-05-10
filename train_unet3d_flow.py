@@ -90,7 +90,7 @@ def run_epoch_withflow(model, dataloader, phase, optim, device,save_all=False, b
                     
                 # d
                 loss_flow = torch.nn.functional.binary_cross_entropy_with_logits(outputs_flow[:,:,:-1,:,:], flow,reduction="sum")
-                   
+
 #                 # large frame
 #                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
 #                 large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -109,19 +109,19 @@ def run_epoch_withflow(model, dataloader, phase, optim, device,save_all=False, b
 #                 pos += (small_trace == 1).sum().item()
 #                 neg += (large_trace == 0).sum().item()
 #                 neg += (small_trace == 0).sum().item()
-                
+
 #                 if save_all:
 #                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
 
 #                 if average:
 #                     ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
-                    
+
 #                 if not save_all:
 #                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
-                
+
 #                 loss_ef = ef_criteria(ef_outputs.view(-1), ef)
 # #                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
-                
+
 #                 loss_seg = (loss_large + loss_small) / 2 
 #                 loss = loss_seg + loss_ef
                 loss = loss_flow
@@ -138,7 +138,7 @@ def run_epoch_withflow(model, dataloader, phase, optim, device,save_all=False, b
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
                 
                 total_seg = total / n / 112 / 112
-                
+
 #                 epoch_loss = total_seg + runningloss_ef/n
                 total_flow += loss_flow.item()
                 epoch_loss = total_flow/ n / 112 / 112
@@ -155,7 +155,7 @@ def run_epoch_withflow(model, dataloader, phase, optim, device,save_all=False, b
 #     if not save_all:
 #         yhat_ef = np.concatenate(yhat_ef)
 #     y_ef = np.concatenate(y_ef)
-    
+
 #     for flow only
     large_inter_list = []
     large_union_list = []
@@ -248,7 +248,7 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                 loss_flow = torch.norm(outputs_flow[:,:,:-1,:,:] - flow,2,1) # normalize dimension : 2 for x, y
                 loss_flow = torch.norm(loss_flow,2,1) # normalize frames 32
                 loss_flow = loss_flow.sum()
-                
+
 #                 # large frame
 #                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
 #                 large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
@@ -267,19 +267,19 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
 #                 pos += (small_trace == 1).sum().item()
 #                 neg += (large_trace == 0).sum().item()
 #                 neg += (small_trace == 0).sum().item()
-                
+
 #                 if save_all:
 #                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
 
 #                 if average:
 #                     ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
-                    
+
 #                 if not save_all:
 #                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
-                
+
 #                 loss_ef = ef_criteria(ef_outputs.view(-1), ef)
 # #                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
-                
+
 #                 loss_seg = (loss_large + loss_small) / 2 
 #                 loss = loss_seg + loss_ef
                 loss = loss_flow
@@ -296,7 +296,7 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                 p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
                 
                 total_seg = total / n / 112 / 112
-                
+
 #                 epoch_loss = total_seg + runningloss_ef/n
                 total_flow += loss_flow.item()
                 epoch_loss = total_flow/ n / 112 / 112
@@ -313,7 +313,7 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
 #     if not save_all:
 #         yhat_ef = np.concatenate(yhat_ef)
 #     y_ef = np.concatenate(y_ef)
-    
+
 #     for flow only
     large_inter_list = []
     large_union_list = []
@@ -753,9 +753,9 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
 run(num_epochs=50,
         modelname="unet3D_flow",
-        frames=16,
+        frames=32,
         period=2,
         pretrained=False,
-        batch_size=1,
+        batch_size=8,
         save_segmentation=False,
         run_ef_test=False)

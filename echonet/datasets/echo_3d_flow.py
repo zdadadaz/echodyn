@@ -6,6 +6,7 @@ import numpy as np
 import collections
 import skimage.draw
 from pyflow import pyflow
+import cv2
 
 def rgb2gray(rgb):
     return np.dot(np.transpose(rgb,(1,2,0)), [0.2989, 0.5870, 0.1140])
@@ -14,8 +15,8 @@ def rgb2gray(rgb):
 def normalize(x):
     return (x-x.min())/(x.max()-x.min())
 
-def calcflow(video):
-    # input size (batch, chn, time, w, h)
+def calcflow(video, path, save=False):
+    # input size (chn, time, w, h)
     # Flow Options:
     alpha = 0.012
     ratio = 0.75
@@ -33,6 +34,9 @@ def calcflow(video):
         nSORIterations, colType)
         flowout[0,i,:,:] = normalize(u)
         flowout[1,i,:,:] = normalize(v)
+        if save:
+            cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+            cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return flowout
 
 
@@ -259,9 +263,15 @@ class Echo3Df(torch.utils.data.Dataset):
         if self.crops != 1:
             video = np.stack(video)
         # print(video.shape)
+        flowPath = os.path.join(self.folder,flow)
         for t in self.target_type:
             if t == 'flow':
-                target.append(calcflow(video))
+                print(self.fnames[index])
+                flow_filename = os.path.join(flowPath,self.fnames[index])
+                pathlib.Path(flow_filename+"/u").mkdir(parents=True, exist_ok=True)
+                pathlib.Path(flow_filename+"/v").mkdir(parents=True, exist_ok=True)
+                flowout = calcflow(video, flow_filename, save=True)
+                target.append(flowout)
         
         if target != []:
             target = tuple(target) if len(target) > 1 else target[0]
