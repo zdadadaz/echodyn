@@ -756,6 +756,6 @@ run(num_epochs=50,
         frames=32,
         period=2,
         pretrained=False,
-        batch_size=8,
+        batch_size=1,
         save_segmentation=False,
         run_ef_test=False)

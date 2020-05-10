@@ -15,7 +15,7 @@ def rgb2gray(rgb):
 def normalize(x):
     return (x-x.min())/(x.max()-x.min())
 
-def calcflow(video, path, save=False):
+def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
     # Flow Options:
     alpha = 0.012
@@ -28,15 +28,21 @@ def calcflow(video, path, save=False):
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
     flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
-        im1 = rgb2gray(video[:,i,:,:])
-        im2 = rgb2gray(video[:,i+1,:,:])
-        u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
-        nSORIterations, colType)
-        flowout[0,i,:,:] = normalize(u)
-        flowout[1,i,:,:] = normalize(v)
-        if save:
-            cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-            cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        print(filename)
+        frame_idx = 'frame'+ str(videolist[i]).zfill(6)
+        if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')):
+            u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
+            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
+        else:
+            im1 = rgb2gray(video[:,i,:,:])
+            im2 = rgb2gray(video[:,i+1,:,:])
+            u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
+            nSORIterations, colType)
+            flowout[0,i,:,:] = normalize(u)
+            flowout[1,i,:,:] = normalize(v)
+            if save:   
+                cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return flowout
 
 
@@ -263,14 +269,12 @@ class Echo3Df(torch.utils.data.Dataset):
         if self.crops != 1:
             video = np.stack(video)
         # print(video.shape)
-        flowPath = os.path.join(self.folder,flow)
+        flowPath = os.path.join(self.folder,"flow")
         for t in self.target_type:
             if t == 'flow':
-                print(self.fnames[index])
+                # print(self.fnames[index])
                 flow_filename = os.path.join(flowPath,self.fnames[index])
-                pathlib.Path(flow_filename+"/u").mkdir(parents=True, exist_ok=True)
-                pathlib.Path(flow_filename+"/v").mkdir(parents=True, exist_ok=True)
-                flowout = calcflow(video, flow_filename, save=True)
+                flowout = calcflow(video, flow_filename,videolist,self.fnames[index],  save=True)
                 target.append(flowout)
         
         if target != []:
