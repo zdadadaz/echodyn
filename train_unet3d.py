@@ -16,7 +16,7 @@ from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 
-# +
+
 def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=-1, divide = 2):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss

@@ -18,162 +18,6 @@ from echonet.datasets.echo import Echo
 from echonet.datasets.echo_3d import Echo3D
 from echonet.datasets.echo_3d_flow import Echo3Df
 
-def run_epoch_withflow(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
-
-    total = 0.
-    n = 0
-
-    pos = 0
-    neg = 0
-    pos_pix = 0
-    neg_pix = 0
-
-    model.train(phase == 'train')
-
-    large_inter = 0
-    large_union = 0
-    small_inter = 0
-    small_union = 0
-    large_inter_list = []
-    large_union_list = []
-    small_inter_list = []
-    small_union_list = []
-    
-    ef_criteria = torch.nn.MSELoss()
-    yhat_ef = []
-    y_ef = []
-    runningloss_ef = 0
-    total_flow = 0
-    count = 0
-    half_len = int(len(dataloader)/2)
-    with torch.set_grad_enabled(phase == 'train'):
-        with tqdm.tqdm(total=len(dataloader)) as pbar:
-            for (i, (X, (large_trace, small_trace, ef, flow), fid)) in enumerate(dataloader):
-                if flag == 0 and i > half_len:
-                    pbar.update()
-                    continue
-                if flag == 1 and i <= half_len:
-                    pbar.update()
-                    continue
-                
-                flow = flow.to(device)
-                ef = ef.to(device)
-                y_ef.append(ef.cpu().numpy())
-                X = X.to(device)
-                average = (len(X.shape) == 6)
-                if average:
-                    batch, n_crops, c, f, h, w = X.shape
-                    X = X.view(-1, c, f, h, w)
-                    
-                pos += (large_trace == 1).sum().item()
-                pos += (small_trace == 1).sum().item()
-                neg += (large_trace == 0).sum().item()
-                neg += (small_trace == 0).sum().item()
-
-                pos_pix += (large_trace == 1).sum(0).to("cpu").detach().numpy()
-                pos_pix += (small_trace == 1).sum(0).to("cpu").detach().numpy()
-                neg_pix += (large_trace == 0).sum(0).to("cpu").detach().numpy()
-                neg_pix += (small_trace == 0).sum(0).to("cpu").detach().numpy()
-
-                batchidx = torch.tensor(range(X.shape[0])).to(device)
-                fidlg = fid[1].to(device)
-                fidsm = fid[0].to(device)
-                large_trace = large_trace.to(device)
-                small_trace = small_trace.to(device)
-                if blocks is None:
-                    # outputs, ef_outputs = model(X)
-                    outputs_flow = model(X)
-                else:
-                    tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
-                    outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
-                    ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
-                    
-                # d
-                loss_flow = torch.nn.functional.binary_cross_entropy_with_logits(outputs_flow[:,:,:-1,:,:], flow,reduction="sum")
-
-#                 # large frame
-#                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
-#                 large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 large_union += np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 large_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-#                 large_union_list.extend(np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-
-#                 # small frame
-#                 loss_small = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidsm, :, :], small_trace, reduction="sum")
-#                 small_inter += np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 small_union += np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 small_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-#                 small_union_list.extend(np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-
-#                 pos += (large_trace == 1).sum().item()
-#                 pos += (small_trace == 1).sum().item()
-#                 neg += (large_trace == 0).sum().item()
-#                 neg += (small_trace == 0).sum().item()
-
-#                 if save_all:
-#                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
-
-#                 if average:
-#                     ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
-
-#                 if not save_all:
-#                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
-
-#                 loss_ef = ef_criteria(ef_outputs.view(-1), ef)
-# #                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
-
-#                 loss_seg = (loss_large + loss_small) / 2 
-#                 loss = loss_seg + loss_ef
-                loss = loss_flow
-                if phase == 'train':
-                    optim.zero_grad()
-                    loss.backward()
-                    optim.step()
-                    
-                n += large_trace.size(0)
-                # total += loss_seg.item()
-                # runningloss_ef += loss_ef.item() * large_trace.size(0)
-
-                p = pos / (pos + neg)
-                p_pix = (pos_pix + 1) / (pos_pix + neg_pix + 2)
-                
-                total_seg = total / n / 112 / 112
-
-#                 epoch_loss = total_seg + runningloss_ef/n
-                total_flow += loss_flow.item()
-                epoch_loss = total_flow/ n / 112 / 112
-                
-                pbar.set_postfix_str("tot: {:.4f}, ef: {:.4f}, seg: {:4f}".format(epoch_loss, runningloss_ef/n, total_seg))
-                
-                pbar.update()
-
-#     large_inter_list = np.array(large_inter_list)
-#     large_union_list = np.array(large_union_list)
-#     small_inter_list = np.array(small_inter_list)
-#     small_union_list = np.array(small_union_list)
-
-#     if not save_all:
-#         yhat_ef = np.concatenate(yhat_ef)
-#     y_ef = np.concatenate(y_ef)
-
-#     for flow only
-    large_inter_list = []
-    large_union_list = []
-    small_inter_list = []
-    small_union_list = []
-    yhat_ef = []
-    
-    return (epoch_loss,
-            total_seg,
-            large_inter_list,
-            large_union_list,
-            small_inter_list,
-            small_union_list,
-            runningloss_ef/n,
-            yhat_ef,
-            y_ef
-            )
-
 def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
 
     total = 0.
@@ -244,51 +88,42 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                     outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
                     ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
                     
-                # Endpoint error: eucline distance : input (batch,, dim, frame, w, h)
-                loss_flow = torch.norm(outputs_flow[:,:,:-1,:,:] - flow,2,1) # normalize dimension : 2 for x, y
-                loss_flow = torch.norm(loss_flow,2,1) # normalize frames 32
-                loss_flow = loss_flow.sum()
+                loss_flow = torch.nn.functional.binary_cross_entropy_with_logits(outputs_flow[:,:,:-1,:,:], flow,reduction="sum")
 
                 # large frame
-#                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
-#                 large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 large_union += np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 large_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-#                 large_union_list.extend(np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
+                large_inter += np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                large_union += np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                large_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                large_union_list.extend(np.logical_or(outputs[batchidx, 0, fidlg, :, :].detach().cpu().numpy() > 0., large_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
 
                 # small frame
-#                 loss_small = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidsm, :, :], small_trace, reduction="sum")
-#                 small_inter += np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 small_union += np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
-#                 small_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
-#                 small_union_list.extend(np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                loss_small = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidsm, :, :], small_trace, reduction="sum")
+                small_inter += np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                small_union += np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum()
+                small_inter_list.extend(np.logical_and(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
+                small_union_list.extend(np.logical_or(outputs[batchidx, 0, fidsm, :, :].detach().cpu().numpy() > 0., small_trace[:, :, :].detach().cpu().numpy() > 0.).sum(2).sum(1))
 
-# +
-#                 pos += (large_trace == 1).sum().item()
-#                 pos += (small_trace == 1).sum().item()
-#                 neg += (large_trace == 0).sum().item()
-#                 neg += (small_trace == 0).sum().item()
+                pos += (large_trace == 1).sum().item()
+                pos += (small_trace == 1).sum().item()
+                neg += (large_trace == 0).sum().item()
+                neg += (small_trace == 0).sum().item()
 
-# +
-#                 if save_all:
-#                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+                if save_all:
+                    yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
 
-# +
-#                 if average:
-#                     ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
+                if average:
+                    ef_outputs = ef_outputs.view(batch, n_crops, -1).mean(1)
 
-# +
-#                 if not save_all:
-#                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
+                if not save_all:
+                    yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
 
-# +
-#                 loss_ef = ef_criteria(ef_outputs.view(-1), ef)
+                loss_ef = ef_criteria(ef_outputs.view(-1), ef)
 #                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
-# -
 
-#                 loss_seg = (loss_large + loss_small) / 2 
-#                 loss = loss_seg + loss_ef
-                loss = loss_flow
+                loss_seg = (loss_large + loss_small) / 2 
+                loss = loss_seg + loss_ef + loss_flow
+                # loss = 
                 if phase == 'train':
                     optim.zero_grad()
                     loss.backward()
@@ -311,23 +146,15 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                 
                 pbar.update()
 
-# +
-#     large_inter_list = np.array(large_inter_list)
-#     large_union_list = np.array(large_union_list)
-#     small_inter_list = np.array(small_inter_list)
-#     small_union_list = np.array(small_union_list)
-# -
+    large_inter_list = np.array(large_inter_list)
+    large_union_list = np.array(large_union_list)
+    small_inter_list = np.array(small_inter_list)
+    small_union_list = np.array(small_union_list)
 
-#     if not save_all:
-#         yhat_ef = np.concatenate(yhat_ef)
-#     y_ef = np.concatenate(y_ef)
+    if not save_all:
+        yhat_ef = np.concatenate(yhat_ef)
+    y_ef = np.concatenate(y_ef)
 
-#     for flow only
-    large_inter_list = []
-    large_union_list = []
-    small_inter_list = []
-    small_union_list = []
-    yhat_ef = []
     
     return (epoch_loss,
             total_seg,
@@ -339,6 +166,86 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
             yhat_ef,
             y_ef
             )
+
+def run_epoch_flow(model, dataloader, phase, optim, device,save_all=False, blocks=None, flag=3):
+
+    total = 0.
+    n = 0
+
+    pos = 0
+    neg = 0
+    pos_pix = 0
+    neg_pix = 0
+
+    model.train(phase == 'train')
+
+    large_inter = 0
+    large_union = 0
+    small_inter = 0
+    small_union = 0
+    large_inter_list = []
+    large_union_list = []
+    small_inter_list = []
+    small_union_list = []
+    
+    ef_criteria = torch.nn.MSELoss()
+    yhat_ef = []
+    y_ef = []
+    runningloss_ef = 0
+    total_flow = 0
+    count = 0
+    half_len = int(len(dataloader)/2)
+    with torch.set_grad_enabled(phase == 'train'):
+        with tqdm.tqdm(total=len(dataloader)) as pbar:
+            for (i, (X, flow, fid)) in enumerate(dataloader):
+                if flag == 0 and i > half_len:
+                    pbar.update()
+                    continue
+                if flag == 1 and i <= half_len:
+                    pbar.update()
+                    continue
+                
+                flow = flow.to(device)
+                X = X.to(device)
+                average = (len(X.shape) == 6)
+                if average:
+                    batch, n_crops, c, f, h, w = X.shape
+                    X = X.view(-1, c, f, h, w)
+                    
+                
+                batchidx = torch.tensor(range(X.shape[0])).to(device)
+                fidlg = fid[1].to(device)
+                fidsm = fid[0].to(device)
+                if blocks is None:
+                    # outputs, ef_outputs = model(X)
+                    outputs_flow = model(X)
+                else:
+                    tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
+                    outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
+                    ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
+                    
+                # Endpoint error: eucline distance : input (batch,, dim, frame, w, h)
+                loss_flow = torch.norm(outputs_flow[:,:,:-1,:,:] - flow,2,1) # normalize dimension : 2 for x, y
+                loss_flow = torch.norm(loss_flow,2,1) # normalize frames 32
+                loss_flow = loss_flow.sum()
+
+                loss = loss_flow
+                if phase == 'train':
+                    optim.zero_grad()
+                    loss.backward()
+                    optim.step()
+                    
+                n += flow.size(0)
+                
+                total_flow += loss_flow.item()
+                epoch_loss = total_flow/ n / 112 / 112
+                
+                pbar.set_postfix_str("tot: {:.4f}".format(epoch_loss))
+                
+                pbar.update()
+
+
+    return epoch_loss
 
 
 
@@ -435,7 +342,6 @@ def run(num_epochs=50,
     tasks = [ "LargeTrace", "SmallTrace", "EF", "flow"]
 
     if output is None:
-#         output = os.path.join("output", "segmentation", "{}_{}".format(modelname, "pretrained" if pretrained else "random"))
         output = os.path.join("output", "segmentation", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -743,7 +649,135 @@ def run(num_epochs=50,
                     # echonet.utils.savevideo(os.path.join(output, "videos", filename[i]), img.astype(np.uint8), 50)
 
 
-# +
+def run_flow(num_epochs=50,
+        modelname="unet",
+        pretrained=False,
+        output=None,
+        device=None,
+        frames=32,
+        period=2,
+        n_train_patients=None,
+        num_workers=5,
+        batch_size=8,
+        seed=0,
+        lr_step_period=None,
+        save_segmentation=False,
+        run_ef_test=False):
+
+    ### Seed RNGs ###
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    tasks = [ "flow"]
+
+    if output is None:
+        output = os.path.join("output", "flow", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    pathlib.Path(output).mkdir(parents=True, exist_ok=True)
+
+    if "unet3D" in modelname.split('_'):
+        model = UNet3D(in_channels=3, out_channels=2)
+    else:
+        # model = DeepLabV3_multi_main()
+        model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
+        
+    # print(model)
+    # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
+    if device.type == "cuda":
+        model = torch.nn.DataParallel(model)
+    model.to(device)
+
+    optim = torch.optim.SGD(model.parameters(), lr=1e-5, momentum=0.9)
+    if lr_step_period is None:
+        lr_step_period = math.inf
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
+
+    mean, std = echonet.utils.get_mean_and_std(Echo(split="train"))
+    kwargs = {"target_type": tasks,
+              "mean": mean,
+              "std": std,
+              "length": frames,
+              "period": period,
+              }
+
+    train_dataset = Echo3Df(split="train", **kwargs)
+    if n_train_patients is not None and len(train_dataset) > n_train_patients:
+        indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
+        train_dataset = torch.utils.data.Subset(train_dataset, indices)
+
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"), drop_last=True)
+    val_dataloader = torch.utils.data.DataLoader(
+        Echo3Df(split="val", **kwargs), batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+    dataloaders = {'train': train_dataloader, 'val': val_dataloader}
+    
+    # input 3x112x112
+    
+    with open(os.path.join(output, "log.csv"), "a") as f:
+        epoch_resume = 0
+        bestLoss = float("inf")
+        try:
+            checkpoint = torch.load(os.path.join(output, "checkpoint.pt"))
+            model.load_state_dict(checkpoint['state_dict'])
+            optim.load_state_dict(checkpoint['opt_dict'])
+            scheduler.load_state_dict(checkpoint['scheduler_dict'])
+            epoch_resume = checkpoint["epoch"] + 1
+            bestLoss = checkpoint["best_loss"]
+            f.write("Resuming from epoch {}\n".format(epoch_resume))
+        except FileNotFoundError:
+            f.write("Starting run from scratch\n")
+
+        for epoch in range(epoch_resume, num_epochs):
+            print("Epoch #{}".format(epoch), flush=True)
+            for phase in ['train', 'val']:
+                start_time = time.time()
+                for i in range(torch.cuda.device_count()):
+                    torch.cuda.reset_max_memory_allocated(i)
+                    torch.cuda.reset_max_memory_cached(i)
+
+                loss = run_epoch_flow(model, dataloaders[phase], phase, optim, device)
+                f.write("{},{},{},{},{},{},{}\n".format(epoch,
+                                                        phase,
+                                                        loss,
+                                                        time.time() - start_time,
+                                                        sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
+                                                        sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
+                                                        batch_size))
+                f.flush()
+            scheduler.step()
+
+            save = {
+                'epoch': epoch,
+                'state_dict': model.state_dict(),
+                'best_loss': bestLoss,
+                'loss': loss,
+                'opt_dict': optim.state_dict(),
+                'scheduler_dict': scheduler.state_dict()
+            }
+            torch.save(save, os.path.join(output, "checkpoint.pt"))
+            if loss < bestLoss:
+                torch.save(save, os.path.join(output, "best.pt"))
+                bestLoss = loss
+
+        checkpoint = torch.load(os.path.join(output, "best.pt"))
+        model.load_state_dict(checkpoint['state_dict'])
+        f.write("Best validation loss {} from epoch {}\n".format(checkpoint["loss"], checkpoint["epoch"]))
+
+        for split in ["val", "test"]: 
+            print(split)
+            kwargs["target_type"] = tasks
+            dataset = Echo3Df(split=split, **kwargs)
+            dataloader = torch.utils.data.DataLoader(dataset,
+                                                      batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+            loss = run_epoch_flow(model, dataloader, split, None, device, flag =3)
+
+            f.write("{} loss = {}\n".format(split, loss))
+            
+            
+            
+
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
@@ -759,12 +793,12 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 #             run_ef_test=False)
 # -
 
-run(num_epochs=50,
+run_flow(num_epochs=50,
         modelname="unet3D_flow_2",
-        frames=32,
+        frames=16,
         period=2,
         pretrained=False,
-        batch_size=8,
+        batch_size=1,
         save_segmentation=False,
         run_ef_test=False)
 
