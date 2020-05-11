@@ -13,7 +13,7 @@ def rgb2gray(rgb):
 
 
 def normalize(x):
-    return (x-x.min())/(x.max()-x.min())
+    return (x-x.min())/(x.max()-x.min()+0.0000000001)
 
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
@@ -28,7 +28,7 @@ def calcflow(video, path, videolist,filename, save=False):
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
     flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
-        print(filename)
+#         print(filename)
         frame_idx = 'frame'+ str(videolist[i]).zfill(6)
         if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')):
             u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
@@ -269,11 +269,13 @@ class Echo3Df(torch.utils.data.Dataset):
         if self.crops != 1:
             video = np.stack(video)
         # print(video.shape)
-        flowPath = os.path.join(self.folder,"flow")
+        flowPath = os.path.join(self.folder,"flow_" + str(self.period))
         for t in self.target_type:
             if t == 'flow':
                 # print(self.fnames[index])
                 flow_filename = os.path.join(flowPath,self.fnames[index])
+                pathlib.Path(os.path.join(flow_filename,'u')).mkdir(parents=True, exist_ok=True)
+                pathlib.Path(os.path.join(flow_filename,'v')).mkdir(parents=True, exist_ok=True)
                 flowout = calcflow(video, flow_filename,videolist,self.fnames[index],  save=True)
                 target.append(flowout)
         
