@@ -15,6 +15,16 @@ def rgb2gray(rgb):
 def normalize(x):
     return (x-x.min())/(x.max()-x.min()+0.0000000001)
 
+def cvflow(prvs,next):
+    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+
+    mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
+    # hsv[...,0] = ang*180/np.pi/2
+    # print(hsv[...,0].max(), hsv[...,0].min())
+    # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
+    # rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
+    return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
+
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
     # Flow Options:
@@ -36,10 +46,12 @@ def calcflow(video, path, videolist,filename, save=False):
         else:
             im1 = rgb2gray(video[:,i,:,:])
             im2 = rgb2gray(video[:,i+1,:,:])
-            u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
-            nSORIterations, colType)
-            flowout[0,i,:,:] = normalize(u)
-            flowout[1,i,:,:] = normalize(v)
+            # u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
+            # nSORIterations, colType)
+            # flowout[0,i,:,:] = normalize(u)
+            # flowout[1,i,:,:] = normalize(v)
+            flowout[0,i,:,:], flowout[1,i,:,:] = cvflow(im1,im2)
+            
             if save:   
                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
                 cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
