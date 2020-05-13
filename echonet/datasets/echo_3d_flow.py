@@ -20,11 +20,12 @@ def cvflow(prvs,next):
 
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
     # hsv[...,0] = ang*180/np.pi/2
-    # print(hsv[...,0].max(), hsv[...,0].min())
     # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
     # rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
+    
+    ang[mag < 0.001] = 0
     return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
-
+    
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
     # Flow Options:
@@ -42,7 +43,9 @@ def calcflow(video, path, videolist,filename, save=False):
         frame_idx = 'frame'+ str(videolist[i]).zfill(6)
         if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')):
             u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
-            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
+            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/180.
+            flowout[0,i,:,:] = u
+            flowout[1,i,:,:] = v
         else:
             im1 = rgb2gray(video[:,i,:,:])
             im2 = rgb2gray(video[:,i+1,:,:])
@@ -54,7 +57,7 @@ def calcflow(video, path, videolist,filename, save=False):
             
             if save:   
                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*180),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return flowout
 
 
