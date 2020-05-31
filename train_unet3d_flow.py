@@ -211,13 +211,11 @@ def run_epoch_flow(model, dataloader, phase, optim, device,save_all=False, block
                 if average:
                     batch, n_crops, c, f, h, w = X.shape
                     X = X.view(-1, c, f, h, w)
-                    
                 
                 batchidx = torch.tensor(range(X.shape[0])).to(device)
                 fidlg = fid[1].to(device)
                 fidsm = fid[0].to(device)
                 if blocks is None:
-                    # outputs, ef_outputs = model(X)
                     outputs_flow = model(X)
                 else:
                     tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
@@ -774,9 +772,9 @@ def run_flow(num_epochs=50,
             loss = run_epoch_flow(model, dataloader, split, None, device, flag =3)
 
             f.write("{} loss = {}\n".format(split, loss))
+
             
-            
-            
+
 
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
@@ -794,11 +792,11 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 # -
 
 run_flow(num_epochs=50,
-        modelname="unet3D_flow_2",
-        frames=16,
+        modelname="unet3D_flow_2_m",
+        frames=32,
         period=2,
         pretrained=False,
-        batch_size=1,
+        batch_size=8,
         save_segmentation=False,
         run_ef_test=False)
 

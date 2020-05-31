@@ -25,7 +25,7 @@ def cvflow(prvs,next):
     
     ang[mag < 0.001] = 0
     return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
-    
+
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
     # Flow Options:
@@ -41,7 +41,8 @@ def calcflow(video, path, videolist,filename, save=False):
     for i in range(video.shape[1] - 1):
 #         print(filename)
         frame_idx = 'frame'+ str(videolist[i]).zfill(6)
-        if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')):
+        frame_idx_n = 'frame'+ str(videolist[i+1]).zfill(6)
+        if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')) and os.path.exists(os.path.join(path+"/u/", frame_idx_n +'.jpg')):
             u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
             v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/180.
             flowout[0,i,:,:] = u
