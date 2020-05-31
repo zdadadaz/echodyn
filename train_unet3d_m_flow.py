@@ -11,7 +11,7 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D
+from echonet.models.unet3d import UNet3D,UNet3D_multi_opf
 
 import sklearn.metrics
 from echonet.datasets.echo import Echo
@@ -124,7 +124,6 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                     yhat_ef.append(ef_outputs.view(-1).to("cpu").detach().numpy())
 
                 loss_ef = ef_criteria(ef_outputs.view(-1), ef)
-#                loss_ef = ef_criteria(ef_outputs.view(-1)/100, ef/100)
 
                 loss_seg = (loss_large + loss_small) / 2 
                 loss = loss_seg + loss_ef + loss_flow
@@ -217,11 +216,13 @@ def run_epoch_flow(model, dataloader, phase, optim, device,save_all=False, block
                 if average:
                     batch, n_crops, c, f, h, w = X.shape
                     X = X.view(-1, c, f, h, w)
+                    
                 
                 batchidx = torch.tensor(range(X.shape[0])).to(device)
                 fidlg = fid[1].to(device)
                 fidsm = fid[0].to(device)
                 if blocks is None:
+                    # outputs, ef_outputs = model(X)
                     outputs_flow = model(X)
                 else:
                     tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
@@ -303,7 +304,7 @@ def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=-1, 
                     X = X.view(-1, c, f, h, w)
                 
                 if blocks is None:
-                    outputs, ef_outputs = model(X)
+                    outputs, ef_outputs,outputs_flow = model(X)
                 else:
                     ef_outputs = torch.cat([model(X[j:(j + blocks), ...])[1] for j in range(0, X.shape[0], blocks)])
 #                     outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
@@ -346,14 +347,14 @@ def run(num_epochs=50,
     tasks = [ "LargeTrace", "SmallTrace", "EF", "flow"]
 
     if output is None:
-        output = os.path.join("output", "segmentation", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
+        output = os.path.join("output", "AllInOne", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3D" in modelname.split('_'):
-        model = UNet3D(in_channels=3, out_channels=2)
+        model = UNet3D_multi_opf(in_channels=3, out_channels=1)
     else:
         # model = DeepLabV3_multi_main()
         model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
@@ -412,11 +413,11 @@ def run(num_epochs=50,
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
 
-                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloaders[phase], phase, optim, device)
+                loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef, flow_error = run_epoch(model, dataloaders[phase], phase, optim, device)
                 overall_dice = 2 * (large_inter.sum() + small_inter.sum()) / (large_union.sum() + large_inter.sum() + small_union.sum() + small_inter.sum())
                 large_dice = 2 * large_inter.sum() / (large_union.sum() + large_inter.sum())
                 small_dice = 2 * small_inter.sum() / (small_union.sum() + small_inter.sum())
-                f.write("{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
+                f.write("{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                                     phase,
                                                                     loss,
                                                                     overall_dice,
@@ -428,7 +429,8 @@ def run(num_epochs=50,
                                                                     sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
                                                                     batch_size,
                                                                     ef_loss,
-                                                                    sklearn.metrics.r2_score(yhat_ef, y_ef)))
+                                                                    sklearn.metrics.r2_score(yhat_ef, y_ef),
+                                                                    flow_error))
                 f.flush()
             scheduler.step()
 
@@ -441,6 +443,7 @@ def run(num_epochs=50,
                 'scheduler_dict': scheduler.state_dict(),
                 'ef_loss':ef_loss,
                 'ef_r2': sklearn.metrics.r2_score(yhat_ef, y_ef),
+                'flow_error':flow_error
             }
             torch.save(save, os.path.join(output, "checkpoint.pt"))
             if loss < bestLoss:
@@ -457,7 +460,7 @@ def run(num_epochs=50,
             dataset = Echo3Df(split=split, **kwargs)
             dataloader = torch.utils.data.DataLoader(dataset,
                                                       batch_size=batch_size, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef = run_epoch(model, dataloader, split, None, device, flag =3)
+            loss, seg_loss, large_inter, large_union, small_inter, small_union, ef_loss, yhat_ef, y_ef, flow_error = run_epoch(model, dataloader, split, None, device, flag =3)
 
             overall_dice = 2 * (large_inter + small_inter) / (large_union + large_inter + small_union + small_inter)
             large_dice = 2 * large_inter / (large_union + large_inter)
@@ -470,6 +473,7 @@ def run(num_epochs=50,
             f.write("{} dice (overall): {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(np.concatenate((large_inter, small_inter)), np.concatenate((large_union, small_union)), echonet.utils.dice_similarity_coefficient)))
             f.write("{} dice (large):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(large_inter, large_union, echonet.utils.dice_similarity_coefficient)))
             f.write("{} dice (small):   {:.4f} ({:.4f} - {:.4f})\n".format(split, *echonet.utils.bootstrap(small_inter, small_union, echonet.utils.dice_similarity_coefficient)))
+            f.write("optical flow error {:.4f}\n".format(flow_error))
             f.flush()
             
             f.write("{} (one crop) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y_ef, yhat_ef, sklearn.metrics.r2_score)))
@@ -778,32 +782,31 @@ def run_flow(num_epochs=50,
             loss = run_epoch_flow(model, dataloader, split, None, device, flag =3)
 
             f.write("{} loss = {}\n".format(split, loss))
-
             
-
+            
+            
 
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-# for i in range(2,0,-1):
-#     modelname = "unet3D_seg_m_notshare" + str(i)
-#     run(num_epochs=50,
-#             modelname=modelname,
-#             frames=32,
-#             period=2,
-#             pretrained=False,
-#             batch_size=8,
-#             save_segmentation=False,
-#             run_ef_test=False)
-# -
 
-run_flow(num_epochs=50,
-        modelname="unet3D_flow_2_m",
+run(num_epochs=50,
+        modelname="unet3D_m_opf",
         frames=32,
         period=2,
         pretrained=False,
         batch_size=8,
         save_segmentation=False,
-        run_ef_test=False)
+        run_ef_test=True)
+
+
+# run_flow(num_epochs=50,
+#         modelname="unet3D_flow_2",
+#         frames=16,
+#         period=2,
+#         pretrained=False,
+#         batch_size=1,
+#         save_segmentation=False,
+#         run_ef_test=False)
 
 
