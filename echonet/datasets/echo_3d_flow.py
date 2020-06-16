@@ -13,19 +13,36 @@ def rgb2gray(rgb):
 
 
 def normalize(x):
-    return (x-x.min())/(x.max()-x.min()+0.0000000001)
+    # 112*0.1 = 11 pixel movement
+    minV = -0.1
+    maxV = 0.1
+    out = (x - minV)/ (maxV - minV)
+    out[out > 1] = 1
+    out[out<0] = 0
+    return out
 
 def cvflow(prvs,next):
+<<<<<<< HEAD
     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
                                                         #scale,level, size,iteration,poly_n,ploy_sigma,flag
+=======
+    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 7, 3, 5, 1.2, 0)
+#     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.8, 3, 7, 10, 5, 1.2, 0)
+>>>>>>> a16db7e5eb512a45a027244a5812ff0a9190e4db
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
-    # hsv[...,0] = ang*180/np.pi/2
-    # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
-    # rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
-    
-    ang[mag < 0.001] = 0
-    return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
-    
+#     ang[mag < 0.001] = 0
+#     return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
+
+    u = flow[...,0]
+    v = flow[...,1]
+#     u[mag < 0.001] = 0
+#     v[mag < 0.001] = 0
+#     u[mag > 20] = 0
+#     v[mag > 20] = 0
+#     print(mag.max())
+#     return (cv2.normalize(u,None,0,1,cv2.NORM_MINMAX), cv2.normalize(v,None,0,1,cv2.NORM_MINMAX))
+    return normalize(u), normalize(v)
+
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
     # Flow Options:
@@ -41,9 +58,12 @@ def calcflow(video, path, videolist,filename, save=False):
     for i in range(video.shape[1] - 1):
 #         print(filename)
         frame_idx = 'frame'+ str(videolist[i]).zfill(6)
-        if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')):
+        frame_idx_n = 'frame'+ str(videolist[i+1]).zfill(6)
+        if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')) and os.path.exists(os.path.join(path+"/u/", frame_idx_n +'.jpg')):
+#             u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
+#             v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/180.
             u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
-            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/180.
+            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
             flowout[0,i,:,:] = u
             flowout[1,i,:,:] = v
         else:
@@ -57,7 +77,9 @@ def calcflow(video, path, videolist,filename, save=False):
             
             if save:   
                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*180),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+#                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+#                 cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*180),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return flowout
 
 
@@ -284,7 +306,7 @@ class Echo3Df(torch.utils.data.Dataset):
         if self.crops != 1:
             video = np.stack(video)
         # print(video.shape)
-        flowPath = os.path.join(self.folder,"flow_" + str(self.period))
+        flowPath = os.path.join(self.folder,"flow_xy_" + str(self.period))
         for t in self.target_type:
             if t == 'flow':
                 # print(self.fnames[index])

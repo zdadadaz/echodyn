@@ -207,6 +207,7 @@ class UNet3D_multi(nn.Module):
 # +
 class UNet3D_ef(nn.Module):
     # acdc 3x32x112x112
+    # echo 3x3x112x112
     def __init__(self, in_channels=3, out_channels=1, init_features=30):
         super(UNet3D_ef, self).__init__()
         features = init_features
@@ -572,7 +573,7 @@ class UNet3D_multi_4(nn.Module):
         Ef_out = self.fc(bottleneck_ef.view(bottleneck_ef.size(0),-1))
         
         return self.conv(dec1), Ef_out
-    
+
 class UNet3D_multi_opf(nn.Module):
     # acdc 3x32x112x112
     def __init__(self, in_channels=32, out_channels=1, init_features=30):
