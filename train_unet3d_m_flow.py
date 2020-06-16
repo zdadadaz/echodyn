@@ -782,9 +782,9 @@ def run_flow(num_epochs=50,
             loss = run_epoch_flow(model, dataloader, split, None, device, flag =3)
 
             f.write("{} loss = {}\n".format(split, loss))
+
             
-            
-            
+
 
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
@@ -797,7 +797,7 @@ run(num_epochs=50,
         pretrained=False,
         batch_size=8,
         save_segmentation=False,
-        run_ef_test=True)
+        run_ef_test=False)
 
 
 # run_flow(num_epochs=50,
