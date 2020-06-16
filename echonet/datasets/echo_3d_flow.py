@@ -17,7 +17,7 @@ def normalize(x):
 
 def cvflow(prvs,next):
     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-
+                                                        #scale,level, size,iteration,poly_n,ploy_sigma,flag
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
     # hsv[...,0] = ang*180/np.pi/2
     # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
