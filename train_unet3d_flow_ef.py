@@ -51,9 +51,16 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 #                     pbar.update()
 #                     continue
                 #flow size 8,2,31,112,112
-                flow = flow.permute(2, 0, 1, 3, 4)
-                flow = torch.cat((flow,torch.zeros((1,8,2,112,112), dtype = torch.double)))
-                flow = flow.permute(1,2,0,3,4).type(torch.float)
+                if blocks is not None:
+                    batch, n_crops, c, f, h, w = flow.shape
+                    flow = flow.permute(3, 0, 1, 2, 4,5)
+                    flow = torch.cat((flow,torch.zeros((1,batch,n_crops, c,h,w), dtype = torch.double)))
+                    flow = flow.permute(1,2,3,0,4,5).type(torch.float)
+                else:
+                    batch, c, f, h, w = flow.shape
+                    flow = flow.permute(2, 0, 1, 3, 4)
+                    flow = torch.cat((flow,torch.zeros((1,batch,c,h,w), dtype = torch.double)))
+                    flow = flow.permute(1,2,0,3,4).type(torch.float)
                 
                 y.append(outcome.numpy())
                 X = X.to(device)
@@ -64,6 +71,8 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
                 if average:
                     batch, n_crops, c, f, h, w = X.shape
                     X = X.view(-1, c, f, h, w)
+                    batch, n_crops, c, f, h, w = flow.shape
+                    flow = flow.view(-1, c, f, h, w)
 
                 summer += outcome.sum()
                 summer_squared += (outcome ** 2).sum()
@@ -142,7 +151,7 @@ def run(num_epochs=45,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3d" in modelname.split('_'):
-        model = UNet3D_ef(in_channels=2, out_channels=1)
+        model = UNet3D_ef(in_channels=3, out_channels=1)
     else:
         model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
     
@@ -313,7 +322,7 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(modelname="unet3d_ef_flow_xy_blk7",
+run(modelname="unet3d_ef_flow_xy_gray",
         frames=32,
         period=2,
         pretrained=False,

@@ -12,10 +12,10 @@ def rgb2gray(rgb):
     return np.dot(np.transpose(rgb,(1,2,0)), [0.2989, 0.5870, 0.1140])
 
 
-def normalize(x):
+def normalize(x, minV, maxV):
     # 112*0.1 = 11 pixel movement
-    minV = -0.1
-    maxV = 0.1
+#     minV = -0.1
+#     maxV = 0.1
     out = (x - minV)/ (maxV - minV)
     out[out > 1] = 1
     out[out<0] = 0
@@ -24,57 +24,47 @@ def normalize(x):
 def cvflow(prvs,next):
     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 7, 3, 5, 1.2, 0)
 #     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.8, 3, 7, 10, 5, 1.2, 0)
-    mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
-#     ang[mag < 0.001] = 0
-#     return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
+#     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
 
     u = flow[...,0]
     v = flow[...,1]
-#     u[mag < 0.001] = 0
-#     v[mag < 0.001] = 0
-#     u[mag > 20] = 0
-#     v[mag > 20] = 0
-#     print(mag.max())
-#     return (cv2.normalize(u,None,0,1,cv2.NORM_MINMAX), cv2.normalize(v,None,0,1,cv2.NORM_MINMAX))
-    return normalize(u), normalize(v)
+    return normalize(u,-0.1,0.1), normalize(v,-0.1,0.1)
 
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
     # Flow Options:
-    alpha = 0.012
-    ratio = 0.75
+    alpha = 0.197
+    ratio = 0.8
     minWidth = 20
-    nOuterFPIterations = 7
-    nInnerFPIterations = 1
-    nSORIterations = 30
+    nOuterFPIterations = 77
+    nInnerFPIterations = 10
+    nSORIterations = 10
     colType = 1  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
-    flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
+#     flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
+    flowout = np.zeros((3,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
 #         print(filename)
         frame_idx = 'frame'+ str(videolist[i]).zfill(6)
         frame_idx_n = 'frame'+ str(videolist[i+1]).zfill(6)
-        if os.path.exists(os.path.join(path+"/u/", frame_idx +'.jpg')) and os.path.exists(os.path.join(path+"/u/", frame_idx_n +'.jpg')):
-#             u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
-#             v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/180.
-            u = cv2.imread(os.path.join(path+"/u/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
-            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
+        if os.path.exists(os.path.join(path+"/u/", frame_idx +'_'+frame_idx_n+'.jpg')):
+            u = cv2.imread(os.path.join(path+"/u/", frame_idx +'_'+frame_idx_n+'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
+            v = cv2.imread(os.path.join(path+"/v/", frame_idx +'_'+frame_idx_n+'.jpg'),cv2.IMREAD_GRAYSCALE)/255.
             flowout[0,i,:,:] = u
             flowout[1,i,:,:] = v
         else:
             im1 = rgb2gray(video[:,i,:,:])
             im2 = rgb2gray(video[:,i+1,:,:])
-            # u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
-            # nSORIterations, colType)
-            # flowout[0,i,:,:] = normalize(u)
-            # flowout[1,i,:,:] = normalize(v)
+#             u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
+#             nSORIterations, colType)
+#             flowout[0,i,:,:] = normalize(u, -10.0, 10.0)
+#             flowout[1,i,:,:] = normalize(v, -10.0, 10.0)
             flowout[0,i,:,:], flowout[1,i,:,:] = cvflow(im1,im2)
             
             if save:   
-                cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-#                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-#                 cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*180),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                cv2.imwrite(os.path.join(path+"/u/", frame_idx +'_'+frame_idx_n+'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                cv2.imwrite(os.path.join(path+"/v/", frame_idx +'_'+frame_idx_n+'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        flowout[2,i,:,:] = rgb2gray(video[:,i,:,:])
     return flowout
 
 
@@ -292,8 +282,9 @@ class Echo3Df(torch.utils.data.Dataset):
             
         else:
             frameid = [first_frameid, last_frameid] 
+            videolist =tuple([s + self.period * np.arange(length) for s in start])
             video = tuple(video[:, s + self.period * np.arange(length), :, :] for s in start)
-        
+            
         
         # if self.crops == 1:
         #     video = video[0]
@@ -307,10 +298,19 @@ class Echo3Df(torch.utils.data.Dataset):
                 # print(self.fnames[index])
                 flow_filename = os.path.join(flowPath,self.fnames[index])
                 pathlib.Path(os.path.join(flow_filename,'u')).mkdir(parents=True, exist_ok=True)
-                pathlib.Path(os.path.join(flow_filename,'v')).mkdir(parents=True, exist_ok=True)
-                flowout = calcflow(video, flow_filename,videolist,self.fnames[index],  save=True)
-                target.append(flowout)
-        
+                pathlib.Path(os.path.join(flow_filename,'v')).mkdir(parents=True, exist_ok=True)    
+                if self.crops ==1:
+                    flowout = calcflow(video, flow_filename,videolist,self.fnames[index],  save=True)
+                    target.append(flowout)
+                else:
+                    flow_buf = []
+                    for c in range(video.shape[0]):
+                        flowout = calcflow(video[c], flow_filename,videolist[c],self.fnames[index],  save=True)
+                        flow_buf.append(flowout)
+                    flow_buf = tuple(flow_buf)
+                    flow_buf = np.stack(tuple(flow_buf))
+                    target.append(flow_buf)
+                    
         if target != []:
             target = tuple(target) if len(target) > 1 else target[0]
             if self.target_transform is not None:
