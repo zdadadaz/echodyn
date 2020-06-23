@@ -11,9 +11,10 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
-from echonet.datasets.echo_3d_flow import Echo3Df
-from echonet.datasets.echo_3d_flow_random import Echo3Df_rand
+from echonet.models.tsn import TSN
+# from echonet.datasets.echo_3d_flow import Echo3Df
+# from echonet.datasets.echo_3d_flow_random import Echo3Df_rand
+from echonet.datasets.echo_3d_flow_random_seg import Echo3Df_rand_seg
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
@@ -49,9 +50,6 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
-#                 if flag == 1 and i <= half_len:
-#                     pbar.update()
-#                     continue
                 #flow size 8,2,31,112,112
                 if blocks is not None:
                     batch, n_crops, c, f, h, w = flow.shape
@@ -79,16 +77,10 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
                 summer += outcome.sum()
                 summer_squared += (outcome ** 2).sum()
 
-                if 'flow' in modelname.split('_'):
-                    if blocks is None:
-                        outputs = model(flow)
-                    else:
-                        outputs = torch.cat([model(flow[j:(j + blocks), ...]) for j in range(0, flow.shape[0], blocks)])
+                if blocks is None:
+                    outputs = model(X,flow)
                 else:
-                    if blocks is None:
-                        outputs = model(X)
-                    else:
-                        outputs = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
+                    outputs = torch.cat([model(X[j:(j + blocks), ...],flow[j:(j + blocks), ...]) for j in range(0, flow.shape[0], blocks)])
 
                 if save_all:
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
@@ -155,21 +147,8 @@ def run(num_epochs=45,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if "unet3d" in modelname.split('_'):
-        if "separate" in modelname.split('_'):
-            model = UNet3D_ef_separate(in_channels=3, out_channels=1)
-        else:
-            model = UNet3D_ef(in_channels=3, out_channels=1)
-    else:
-        if "flow" in modelname.split('_'): # input feature size = 2
-            model = torchvision.models.video.__dict__['r2plus1d_18'](pretrained=pretrained)
-            model.stem[0] = nn.Conv3d(2, 45, kernel_size=(1, 7, 7), stride=(1, 2, 2), padding=(0, 3, 3), bias=False)
-        else: # input feature size = 3
-            model = torchvision.models.video.__dict__['r2plus1d_18'](pretrained=pretrained)
+    model = TSN(pretrained = True)
     
-        model.fc = torch.nn.Linear(model.fc.in_features, 1)
-        model.fc.bias.data[0] = 55.6
-        
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
@@ -191,14 +170,14 @@ def run(num_epochs=45,
 
 # Data preparation
 #     train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
-    train_dataset = Echo3Df_rand(split="train", **kwargs)
+    train_dataset = Echo3Df_rand_seg(split="train", **kwargs)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
         indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"), drop_last=True)
-    val_dataset = Echo3Df_rand(split="val", **kwargs)
+    val_dataset = Echo3Df_rand_seg(split="val", **kwargs)
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
@@ -265,7 +244,7 @@ def run(num_epochs=45,
         # Testing
         if run_test:
             for split in ["val", "test"]:
-                dataset = Echo3Df_rand(split=split, **kwargs)
+                dataset = Echo3Df_rand_seg(split=split, **kwargs)
                 dataloader = torch.utils.data.DataLoader(
                     dataset,
                     batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
@@ -275,7 +254,7 @@ def run(num_epochs=45,
                 f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_squared_error)))))
                 f.flush()
 
-                ds = Echo3Df_rand(split=split, **kwargs, crops="all")
+                ds = Echo3Df_rand_seg(split=split, **kwargs, crops="all")
                 dataloader = torch.utils.data.DataLoader(
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 yhat = []
@@ -335,21 +314,22 @@ def run(num_epochs=45,
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-run(modelname="r2plus1_ef_flow_xy",
+run(modelname="r2plus1_ef_flow_xy_rgb_tsn",
         frames=32,
-        period=2,
+        period=1,
         pretrained=False,
         batch_size=8,
         run_test=True,
         num_epochs = 50)
 
-run(modelname="r2plus1_ef",
-        frames=32,
-        period=2,
-        pretrained=True,
-        batch_size=8,
-        run_test=True,
-        num_epochs = 50)
+# +
+# run(modelname="r2plus1_ef",
+#         frames=32,
+#         period=2,
+#         pretrained=True,
+#         batch_size=8,
+#         run_test=True,
+#         num_epochs = 50)
 
 # +
 

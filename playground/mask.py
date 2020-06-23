@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from echonet.datasets.echo_3d import Echo3D
 
 torch.cuda.empty_cache() 
-tasks = ["LargeFrame", "SmallFrame", "LargeTrace", "SmallTrace", "EF", "ESV", "EDV"]
+tasks = ["EF"]
 echonet.config.DATA_DIR = '../../../data/EchoNet-Dynamic'
 # print(echonet.config.DATA_DIR)
 mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
@@ -64,21 +64,21 @@ pos =0
 for (i, (X, outcome, fid) ) in enumerate(dataloader):
     print(fid)
     pos +=1
-    
+
     
 
 
+
     
+
     
+
     
+
     
+
     
+
     
-    
-    
-    
-    
-    
-    
-    
+
     
