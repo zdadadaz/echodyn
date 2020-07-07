@@ -46,7 +46,7 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
             for (i, (X, (outcome, flow), fid)) in enumerate(dataloader):
 
                 if  flag >= 0 and (not (i < endRange and i >= frontRange)):
-                    print("qq")
+#                     print("qq")
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
@@ -86,7 +86,8 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
 
                 if average:
-                    outputs = outputs.view(batch, n_crops, -1).mean(1)
+                    outputs = outputs.view(batch, -1).mean(1)
+#                     outputs = outputs.view(batch, n_crops, -1).mean(1)
                     
                 if not save_all:
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
@@ -125,6 +126,7 @@ def run(num_epochs=45,
         tasks="EF",
         frames=16,
         period=4,
+        segment=1,
         pretrained=True,
         output=None,
         device=None,
@@ -147,7 +149,7 @@ def run(num_epochs=45,
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    model = TSN(pretrained = True)
+    model = TSN(batch=batch_size, pretrained = True)
     
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
@@ -314,12 +316,14 @@ def run(num_epochs=45,
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
+# because video is too short, period = 1 and seg = 2
 run(modelname="r2plus1_ef_flow_xy_rgb_tsn",
         frames=32,
         period=1,
+        segment=2,
         pretrained=False,
         batch_size=8,
-        run_test=True,
+        run_test=False,
         num_epochs = 50)
 
 # +

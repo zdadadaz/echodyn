@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision
 import numpy as np
+from echonet.models.resnet3d import resnet50 
 
 class Identity(torch.nn.Module):
     def __init__(self):
@@ -29,18 +30,18 @@ class ConsensusModule(torch.nn.Module):
 
 
 class TSN(nn.Module):
-    def __init__(self, seg =2, pretrained = True):
+    def __init__(self, batch=1, pretrained = True):
         super(TSN, self).__init__()
         self.pretrained = pretrained
         self._prepare_model()
         self.consensus = ConsensusModule('avg')
-        self.seg = seg
+        self.batch = batch
     def forward(self, X, flow):
         # batch*n_crops, c, f, h, w
         flow = self.model_f(flow)
         rgb = self.model(X)
-        flow_out = self.consensus(flow.view(-1,self.seg))
-        rgb_out = self.consensus(rgb.view(-1,self.seg))
+        flow_out = self.consensus(flow.view(self.batch,-1))
+        rgb_out = self.consensus(rgb.view(self.batch,-1))
         out = torch.div(torch.add(flow_out, rgb_out),2)
         return out  # (batch,1)
     
@@ -57,12 +58,37 @@ class TSN(nn.Module):
         # assign init
         self.model_f.stem[0].weight.data = self.model.stem[0].weight.data[:,:2,...]
 
+
+class TSN_resnet(nn.Module):
+    def __init__(self, batch=1, pretrained = True):
+        super(TSN, self).__init__()
+        self.pretrained = pretrained
+        self._prepare_model()
+        self.consensus = ConsensusModule('avg')
+        self.batch = batch
+    def forward(self, X, flow):
+        # batch*n_crops, c, f, h, w
+        flow = self.model_f(flow)
+        rgb = self.model(X)
+        flow_out = self.consensus(flow.view(self.batch,-1))
+        rgb_out = self.consensus(rgb.view(self.batch,-1))
+        out = torch.div(torch.add(flow_out, rgb_out),2)
+        return out  # (batch,1)
+    
+    def _prepare_model(self):
+        self.model_f = resnet50(**{'pretrained': False,'in_channels': 2,'num_classes': 1,'temporal_conv_layer': 1})
+        self.model = resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
+
+
+
 # +
-# model = TSN()
+model = TSN_resnet(batch = 3)
+# model = TSN(batch = 3)
 # batch,ch,segment*len,w,h
-# X = torch.rand(2 * 3,3,32,112,112)
-# flow = torch.rand(2 * 3,2,32,112,112)
-# out = model(X,flow)
+X = torch.rand(3*2,3,32,112,112)
+flow = torch.rand(3*2,2,32,112,112)
+out = model(X,flow)
+print(out)
 
 # x = torch.tensor([[[1, 2, 3], [4, 5, 6]],[[1, 2, 3], [4, 5, 6]]])
 # print(x.size())
