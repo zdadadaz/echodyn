@@ -221,6 +221,9 @@ class UNet3D_ef(nn.Module):
         self.pool4 = nn.MaxPool3d(kernel_size=2, stride=2)
 
         self.bottleneck = UNet3D._block(features * 8, features * 16, name="bottleneck")
+#       FC3
+        self.pool5 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.bottleneck2 = UNet3D._block(features * 16, features * 32, name="bottleneck2")
 
 #         self.upconv4 = nn.ConvTranspose3d(
 #             features * 16, features * 8, kernel_size=2, stride=2
@@ -243,10 +246,25 @@ class UNet3D_ef(nn.Module):
 #             in_channels=features, out_channels=out_channels, kernel_size=1
 #         )       
 #         self.fc = nn.Linear(480*2*7*7, 1)
-        self.fc = nn.Sequential(nn.Linear(480*2*7*7, 60*2*7*7),
-                                 nn.ReLU(),
-                                 nn.Linear(60*2*7*7, 1)
-                                ) 
+       
+#       old fc
+#         self.fc = nn.Sequential(nn.Linear(480*2*7*7, 60*2*7*7),
+#                                  nn.ReLU(),
+#                                  nn.Linear(60*2*7*7, 1)
+#                                 ) 
+        # FC2
+#         self.fc = nn.Sequential(
+#                                 nn.AdaptiveAvgPool3d((None, 1, 1)),
+#                                 nn.AdaptiveMaxPool3d(1),
+#             nn.Conv3d(480, 1, kernel_size=1, stride=1, padding=0)
+#         ) 
+
+#         FC3
+        self.fc = nn.Sequential(
+                                nn.AdaptiveAvgPool3d((None, 1, 1)),
+                                nn.AdaptiveMaxPool3d(1),
+            nn.Conv3d(480*2, 1, kernel_size=1, stride=1, padding=0)
+        ) 
         
     def forward(self, x):
         enc1 = self.encoder1(x)
@@ -255,6 +273,7 @@ class UNet3D_ef(nn.Module):
         enc4 = self.encoder4(self.pool3(enc3))
 
         bottleneck = self.bottleneck(self.pool4(enc4))
+        bottleneck2 = self.bottleneck2(self.pool5(bottleneck))
 
 #         dec4 = self.upconv4(bottleneck)
 #         dec4 = torch.cat((dec4, enc4), dim=1)
@@ -269,11 +288,19 @@ class UNet3D_ef(nn.Module):
 #         dec1 = torch.cat((dec1, enc1), dim=1)
 #         dec1 = self.decoder1(dec1)
         
-        Ef_out = self.fc(bottleneck.view(bottleneck.size(0),-1))
+#         Ef_out = self.fc(bottleneck.view(bottleneck.size(0),-1))
+        Ef_out = self.fc(bottleneck2)
+        return Ef_out    
         
-        return Ef_out
 
 
+# +
+# model = UNet3D_ef()
+# X = torch.rand(2,3,32,112,112)
+# # flow = torch.rand(3*2,2,32,112,112)
+# # print(model)
+# print(model.get_pretrain()
+# # print(model(X).size())
 # -
 
 class UNet3D_multi_1(nn.Module):
@@ -704,7 +731,6 @@ class UNet3D_multi_opf(nn.Module):
         return self.conv(dec1), Ef_out, self.conv_opf(dec1_opf)
 
 
-# +
 class UNet3D_ef_separate(nn.Module):
     # acdc 3x32x112x112
     # echo 3x3x112x112
@@ -722,31 +748,12 @@ class UNet3D_ef_separate(nn.Module):
 
         self.bottleneck = UNet3D_ef_separate._block(features * 8, features * 16, name="bottleneck")
 
-#         self.upconv4 = nn.ConvTranspose3d(
-#             features * 16, features * 8, kernel_size=2, stride=2
-#         )
-#         self.decoder4 = UNet3D._block((features * 8) * 2, features * 8, name="dec4")
-#         self.upconv3 = nn.ConvTranspose3d(
-#             features * 8, features * 4, kernel_size=2, stride=2
-#         )
-#         self.decoder3 = UNet3D._block((features * 4) * 2, features * 4, name="dec3")
-#         self.upconv2 = nn.ConvTranspose3d(
-#             features * 4, features * 2, kernel_size=2, stride=2
-#         )
-#         self.decoder2 = UNet3D._block((features * 2) * 2, features * 2, name="dec2")
-#         self.upconv1 = nn.ConvTranspose3d(
-#             features * 2, features, kernel_size=2, stride=2
-#         )
-#         self.decoder1 = UNet3D._block(features * 2, features, name="dec1")
-
-#         self.conv = nn.Conv3d(
-#             in_channels=features, out_channels=out_channels, kernel_size=1
-#         )       
-#         self.fc = nn.Linear(480*2*7*7, 1)
-        self.fc = nn.Sequential(nn.Linear(480*2*7*7, 60*2*7*7),
-                                 nn.ReLU(),
-                                 nn.Linear(60*2*7*7, 1)
-                                ) 
+        # FC2
+        self.fc = nn.Sequential(
+                                nn.AdaptiveAvgPool3d((None, 1, 1)),
+                                nn.AdaptiveMaxPool3d(1),
+            nn.Conv3d(480, 1, kernel_size=1, stride=1, padding=0)
+        ) 
         
     def forward(self, x):
         enc1 = self.encoder1(x)
@@ -756,20 +763,8 @@ class UNet3D_ef_separate(nn.Module):
 
         bottleneck = self.bottleneck(self.pool4(enc4))
 
-#         dec4 = self.upconv4(bottleneck)
-#         dec4 = torch.cat((dec4, enc4), dim=1)
-#         dec4 = self.decoder4(dec4)
-#         dec3 = self.upconv3(dec4)
-#         dec3 = torch.cat((dec3, enc3), dim=1)
-#         dec3 = self.decoder3(dec3)
-#         dec2 = self.upconv2(dec3)
-#         dec2 = torch.cat((dec2, enc2), dim=1)
-#         dec2 = self.decoder2(dec2)
-#         dec1 = self.upconv1(dec2)
-#         dec1 = torch.cat((dec1, enc1), dim=1)
-#         dec1 = self.decoder1(dec1)
-        
-        Ef_out = self.fc(bottleneck.view(bottleneck.size(0),-1))
+        Ef_out = self.fc(bottleneck)
+
         
         return Ef_out
      

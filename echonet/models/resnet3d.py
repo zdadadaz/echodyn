@@ -163,24 +163,24 @@ class ResNet3D(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x)
+        x_s = self.conv1(x_s)
+        x_s = self.bn1(x_s)
+        x_s = self.relu(x_s)
+        x_s = self.maxpool(x_s)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        for i in range(1, 5):
+            layer_spatial = self.__getattr__('layer{}'.format(i))
+            for j in range(layer_spatial.blocks):
+                x_s_res, x_t_res = None, None
+                if 2 == j:
+                    x_s_res = x_s                       # T -> S
 
-        x = self.s_pool(x)   
-        x = self.t_pool(x)
+                x_s = layer_spatial.__getattr__('sblock_{}'.format(j))(x_s, residual=x_s_res)
 
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
-        x_t = functional.relu(self.temporal_stream.fc(x_t), inplace=True)
-        
-        return x
+        x_s = self.s_pool(x_s)
+        x_s = self.t_pool(x_s)
+        x_s = functional.relu(self.fc(x_s), inplace=True)
+        return x_s.view(x_s.size(0), x_s.size(1))
 #         raise NotImplementedError('use the two_stream wrapper network\' forward function')
 
     @staticmethod
@@ -247,9 +247,14 @@ class Block(nn.Module):
         for i in range(1, self.blocks):
             self.__setattr__('sblock_{}'.format(i), block(self.inplanes, planes,
                                                           t_conv=True if t_conv_layer == i else False))
-
     def forward(self, x):
-        raise NotImplementedError
+        x_res = None
+        for i in range(self.blocks):
+            if 2==i:
+                x_res = x
+            x = self.__getattr__('sblock_{}'.format(i))(x, residual=x_res)
+        return x
+#         raise NotImplementedError
 
 
 def resnet50(pretrained=False, **kwargs):
