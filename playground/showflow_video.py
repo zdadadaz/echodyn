@@ -17,14 +17,13 @@ def normalize(x, minV, maxV):
     return out
 
 def cvflow(prvs,next):
-    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 7, 3, 5, 1.2, 0)
 
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
     # hsv[...,0] = ang*180/np.pi/2
     # hsv[...,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
     # rgb = cv2.cvtColor(hsv,cv2.COLOR_HSV2BGR)
     
-    ang[mag < 0.001] = 0
     return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
     
 

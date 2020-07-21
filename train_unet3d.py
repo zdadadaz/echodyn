@@ -299,12 +299,13 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(modelname="unet3d_lr2",
+run(modelname="unet3d_ef",
         frames=32,
         period=2,
         pretrained=False,
         batch_size=8,
-        run_test=True)
+        run_test=True,
+        num_epochs = 50)
 
 # +
 # run(modelname="r2plus1d_18",

@@ -22,13 +22,9 @@ def normalize(x):
     return out
 
 def cvflow(prvs,next):
-<<<<<<< HEAD
     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 15, 3, 5, 1.2, 0)
                                                         #scale,level, size,iteration,poly_n,ploy_sigma,flag
-=======
-    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 7, 3, 5, 1.2, 0)
 #     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.8, 3, 7, 10, 5, 1.2, 0)
->>>>>>> a16db7e5eb512a45a027244a5812ff0a9190e4db
     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
 #     ang[mag < 0.001] = 0
 #     return (cv2.normalize(mag,None,0,1,cv2.NORM_MINMAX), ang/np.pi/2)
@@ -81,7 +77,6 @@ def calcflow(video, path, videolist,filename, save=False):
 #                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
 #                 cv2.imwrite(os.path.join(path+"/v/", frame_idx +'.jpg'),np.uint8(flowout[1,i,:,:]*180),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return flowout
-
 
 class Echo3Df(torch.utils.data.Dataset):
     def __init__(self, root=None,
