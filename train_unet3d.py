@@ -12,6 +12,7 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
+from echonet.models.resnet3d import resnet50
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
@@ -104,6 +105,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
 # -
 
+# +
 def run(num_epochs=45,
         modelname="r3d_18",
         tasks="EF",
@@ -132,12 +134,14 @@ def run(num_epochs=45,
 
     if "unet3d" in modelname.split('_'):
 #         model = UNet3D_ef(in_channels=3, out_channels=1)
+        print("unet3d_separate")
         model = UNet3D_ef_separate(in_channels=3, out_channels=1)
     else:
-        model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
+        model= resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
+#         model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
     
-        model.fc = torch.nn.Linear(model.fc.in_features, 1)
-        model.fc.bias.data[0] = 55.6
+#         model.fc = torch.nn.Linear(model.fc.in_features, 1)
+#         model.fc.bias.data[0] = 55.6
         
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
@@ -147,6 +151,9 @@ def run(num_epochs=45,
     if lr_step_period is None:
         lr_step_period = math.inf
     scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
+
+
+# -
 
 # image normalization
     mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
@@ -300,7 +307,7 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(modelname="unet3d_ef_FC2sep",
+run(modelname="unet3d_ef_sep2",
         frames=32,
         period=2,
         pretrained=False,

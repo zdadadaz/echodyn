@@ -16,21 +16,31 @@ def normalize(x, minV, maxV):
     # 112*0.1 = 11 pixel movement
 #     minV = -0.1
 #     maxV = 0.1
-    minV = max(minV,x.min())
+    minV = max(minV, x.min())
     maxV = min(maxV, x.max())
     out = (x - minV)/ (maxV - minV)
     out[out > 1] = 1
     out[out<0] = 0
     return out
 
+# +
 def cvflow(prvs,next):
-    flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 7, 3, 5, 1.2, 0)
+#     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.5, 3, 7, 3, 5, 1.2, 0)
 #     flow = cv2.calcOpticalFlowFarneback(prvs,next, None, 0.8, 3, 7, 10, 5, 1.2, 0)
 #     mag, ang = cv2.cartToPolar(flow[...,0], flow[...,1])
 
+#     u = flow[...,0]
+#     v = flow[...,1]
+#     return normalize(u,-0.1,0.1), normalize(v,-0.1,0.1)
+
+    optical_flow = cv2.optflow.DualTVL1OpticalFlow_create()
+    flow = optical_flow.calc(prvs, next, None)
     u = flow[...,0]
     v = flow[...,1]
-    return normalize(u,-0.1,0.1), normalize(v,-0.1,0.1)
+    return normalize(u, -20.0, 20.0), normalize(v, -20.0, 20.0) 
+
+
+# -
 
 def calcflow(video, path, videolist,filename, save=False):
     # input size (chn, time, w, h)
@@ -43,8 +53,8 @@ def calcflow(video, path, videolist,filename, save=False):
     nSORIterations = 10
     colType = 1  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
-#     flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
-    flowout = np.zeros((3,(video.shape[1]-1),video.shape[2],video.shape[3]))
+    flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
+#     flowout = np.zeros((3,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
 #         print(filename)
         frame_idx = 'frame'+ str(videolist[i]).zfill(6)
@@ -55,8 +65,8 @@ def calcflow(video, path, videolist,filename, save=False):
             flowout[0,i,:,:] = u
             flowout[1,i,:,:] = v
         else:
-            im1 = rgb2gray(video[:,i,:,:])
-            im2 = rgb2gray(video[:,i+1,:,:])
+            im1 = np.float32(rgb2gray(video[:,i,:,:]))
+            im2 = np.float32(rgb2gray(video[:,i+1,:,:]))
 #             u, v, im2W = pyflow.coarse2fine_flow(im1[...,np.newaxis], im2[...,np.newaxis], alpha, ratio, minWidth, nOuterFPIterations, nInnerFPIterations,
 #             nSORIterations, colType)
 #             flowout[0,i,:,:] = normalize(u, -10.0, 10.0)
@@ -66,11 +76,12 @@ def calcflow(video, path, videolist,filename, save=False):
             if save:   
                 cv2.imwrite(os.path.join(path+"/u/", frame_idx +'_'+frame_idx_n+'.jpg'),np.uint8(flowout[0,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
                 cv2.imwrite(os.path.join(path+"/v/", frame_idx +'_'+frame_idx_n+'.jpg'),np.uint8(flowout[1,i,:,:]*255),[int(cv2.IMWRITE_JPEG_QUALITY), 90])
-        flowout[2,i,:,:] = rgb2gray(video[:,i,:,:])
+#         flowout[2,i,:,:] = rgb2gray(video[:,i,:,:])
     return flowout
 
 
-class Echo3Df(torch.utils.data.Dataset):
+# +
+class Echo3Dftv_rand(torch.utils.data.Dataset):
     def __init__(self, root=None,
                  split="train", target_type="EF",
                  mean=0., std=1.,
@@ -196,18 +207,7 @@ class Echo3Df(torch.utils.data.Dataset):
         if self.crops == "all":
             start = np.arange(f - (length - 1) * self.period)
         else:
-            fromEnd = max(np.random.choice(f - (length - 1) * self.period, self.crops),1)
-            # tmp  = max(1,last_frameid - (length - 1) * self.period)
-            firstframe = min(first_frameid, last_frameid)
-            tmp = min(firstframe,fromEnd)
-            try:
-                if firstframe == tmp:
-                    start = 0
-                else:
-                    start = np.random.choice(tmp, self.crops)
-            except:
-                print("tmp is <1 in random choice")
-                print(tmp,firstframe, fromEnd)
+            start = np.random.choice(f - (length - 1) * self.period, self.crops)
         target = []
         
         for t in self.target_type:
@@ -248,53 +248,18 @@ class Echo3Df(torch.utils.data.Dataset):
         # print(self.fnames[index])
 
         # Select random crops
-        if self.crops==1:
-            videolist =list(start + self.period * np.arange(length))
-            videolist.append(first_frameid)
-            videolist.append(last_frameid)
-            videolist = sorted(list(set(videolist)))
-            lendiff = abs(len(videolist)-length)
-            def resizelist(vlist,first_frameid,last_frameid, lendiff):
-               for v in range(len(vlist)):
-                   if vlist[v] != first_frameid and lendiff > 0:
-                       vlist.pop(v)
-                       lendiff -= 1
-                   if vlist[len(vlist)-1-v] != last_frameid and lendiff > 0:
-                       vlist.pop(len(vlist)-1-v)
-                       lendiff -= 1
-                   if lendiff==0:
-                       return vlist
-
-            
-            videolist = resizelist(videolist, min(first_frameid, last_frameid), max(first_frameid, last_frameid), lendiff)
-            # print(first_frameid, last_frameid, lendiff)
-            # print(len(videolist))
-            # print(videolist)
-            try:
-                frameid = [list(videolist).index(first_frameid), list(videolist).index(last_frameid)]
-            except:
-                print("videolist")
-                print(videolist)
-                print("first_frameid", first_frameid)
-                print("last_frameid", last_frameid)
-                
-            # print("frameid: ", frameid)
-            videolist = np.array(videolist)
-            video = video[:, videolist, :, :]
-            
+        video = tuple(video[:, s + self.period * np.arange(length), :, :] for s in start)
+        videolist =tuple([s + self.period * np.arange(length) for s in start])
+        frameid = [first_frameid, last_frameid] 
+        if self.crops == 1:
+            video = video[0]
+            videolist = videolist[0]
         else:
-            frameid = [first_frameid, last_frameid] 
-            videolist =tuple([s + self.period * np.arange(length) for s in start])
-            video = tuple(video[:, s + self.period * np.arange(length), :, :] for s in start)
-            
-        
-        # if self.crops == 1:
-        #     video = video[0]
-        # else:
-        if self.crops != 1:
             video = np.stack(video)
-        # print(video.shape)
-        flowPath = os.path.join(self.folder,"flow_xy_" + str(self.period))
+            videolist = np.stack(videolist)
+            
+#         print(video.shape)
+        flowPath = os.path.join(self.folder,"tvflow_xy_" + str(self.period))
         for t in self.target_type:
             if t == 'flow':
                 # print(self.fnames[index])
@@ -330,6 +295,8 @@ class Echo3Df(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.fnames)
 
+
+# -
 
 def _defaultdict_of_lists():
     return collections.defaultdict(list)
