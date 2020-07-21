@@ -30,7 +30,7 @@ class DeepLabV3(nn.Module):
         y = F.interpolate(xx1, size=input_shape, mode='bilinear', align_corners=False)
         
         return y
-    
+
 class DeepLabV3_multi(nn.Module):
     def __init__(self, backbone, classifier):
         super(DeepLabV3_multi, self).__init__()
@@ -121,7 +121,7 @@ class ASPP(nn.Module):
             res.append(conv(x))
         res = torch.cat(res, dim=1)
         return self.project(res)
-    
+
 def DeepLabV3_main():
     model = torchvision.models.__dict__["resnet50"](
         pretrained=False,
