@@ -574,7 +574,7 @@ def run(num_epochs=50,
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-for i in range(2,0,-1):
+for i in range(1,0,-1):
     modelname = "unet3D_seg_m_notshare" + str(i)
     run(num_epochs=50,
             modelname=modelname,

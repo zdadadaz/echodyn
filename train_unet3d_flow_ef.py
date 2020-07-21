@@ -14,12 +14,14 @@ import time
 from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
 from echonet.datasets.echo_3d_flow import Echo3Df
 from echonet.datasets.echo_3d_flow_random import Echo3Df_rand
+from echonet.datasets.echo_3d_tvflow_random import Echo3Dftv_rand
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 import torch.nn as nn
 
 
+# +
 def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False, blocks=None, flag=-1, divide = 2):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss
@@ -45,24 +47,21 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
             for (i, (X, (outcome, flow), fid)) in enumerate(dataloader):
 
                 if  flag >= 0 and (not (i < endRange and i >= frontRange)):
-                    print("qq")
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
-#                 if flag == 1 and i <= half_len:
-#                     pbar.update()
-#                     continue
-                #flow size 8,2,31,112,112
-                if blocks is not None:
-                    batch, n_crops, c, f, h, w = flow.shape
-                    flow = flow.permute(3, 0, 1, 2, 4,5)
-                    flow = torch.cat((flow,torch.zeros((1,batch,n_crops, c,h,w), dtype = torch.double)))
-                    flow = flow.permute(1,2,3,0,4,5).type(torch.float)
-                else:
-                    batch, c, f, h, w = flow.shape
-                    flow = flow.permute(2, 0, 1, 3, 4)
-                    flow = torch.cat((flow,torch.zeros((1,batch,c,h,w), dtype = torch.double)))
-                    flow = flow.permute(1,2,0,3,4).type(torch.float)
+
+#                 flow size 8,2,31,112,112
+#                 if blocks is not None:
+#                     batch, n_crops, c, f, h, w = flow.shape
+#                     flow = flow.permute(3, 0, 1, 2, 4,5)
+#                     flow = torch.cat((flow,torch.zeros((1,batch,n_crops, c,h,w), dtype = torch.double)))
+#                     flow = flow.permute(1,2,3,0,4,5).type(torch.float)
+#                 else:
+#                     batch, c, f, h, w = flow.shape
+#                     flow = flow.permute(2, 0, 1, 3, 4)
+#                     flow = torch.cat((flow,torch.zeros((1,batch,c,h,w), dtype = torch.double)))
+#                     flow = flow.permute(1,2,0,3,4).type(torch.float)
                 
                 y.append(outcome.numpy())
                 X = X.to(device)
@@ -99,6 +98,8 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
                 if not save_all:
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
 
+
+# -
 
 #                 print(outputs.view(-1))
 #                 print(outcome)
@@ -190,15 +191,16 @@ def run(num_epochs=45,
               }
 
 # Data preparation
-#     train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
-    train_dataset = Echo3Df_rand(split="train", **kwargs)
+    train_dataset = Echo3Dftv_rand(split="train", **kwargs)
+#     train_dataset = Echo3Df_rand(split="train", **kwargs)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
         indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"), drop_last=True)
-    val_dataset = Echo3Df_rand(split="val", **kwargs)
+    val_dataset = Echo3Dftv_rand(split="val", **kwargs)
+#     val_dataset = Echo3Df_rand(split="val", **kwargs)
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
@@ -265,7 +267,8 @@ def run(num_epochs=45,
         # Testing
         if run_test:
             for split in ["val", "test"]:
-                dataset = Echo3Df_rand(split=split, **kwargs)
+                dataset = Echo3Dftv_rand(split=split, **kwargs)
+#                 dataset = Echo3Df_rand(split=split, **kwargs)
                 dataloader = torch.utils.data.DataLoader(
                     dataset,
                     batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
@@ -275,7 +278,8 @@ def run(num_epochs=45,
                 f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_squared_error)))))
                 f.flush()
 
-                ds = Echo3Df_rand(split=split, **kwargs, crops="all")
+                ds = Echo3Dftv_rand(split=split, **kwargs, crops="all")
+#                 ds = Echo3Df_rand(split=split, **kwargs, crops="all")
                 dataloader = torch.utils.data.DataLoader(
                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
                 yhat = []
@@ -335,21 +339,22 @@ def run(num_epochs=45,
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-run(modelname="r2plus1_ef_flow_xy",
-        frames=32,
+run(modelname="r2plus1_ef_flow_tv",
+        frames=33,
         period=2,
         pretrained=False,
         batch_size=8,
         run_test=True,
         num_epochs = 50)
 
-run(modelname="r2plus1_ef",
-        frames=32,
-        period=2,
-        pretrained=True,
-        batch_size=8,
-        run_test=True,
-        num_epochs = 50)
+# +
+# run(modelname="r2plus1_ef",
+#         frames=32,
+#         period=2,
+#         pretrained=True,
+#         batch_size=8,
+#         run_test=True,
+#         num_epochs = 50)
 
 # +
 
