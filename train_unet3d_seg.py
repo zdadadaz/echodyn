@@ -12,7 +12,8 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_multi
-from echonet.models.deeplabv3 import DeepLabV3_multi_main
+# from echonet.models.deeplabv3 import DeepLabV3_multi_main
+from echonet.models.r2plus1D import R2Plus1D_unet_multi
 
 import sklearn.metrics
 from echonet.datasets.echo import Echo
@@ -145,6 +146,9 @@ def run_epoch(model, dataloader, phase, optim, device, blocks=None, flag=3):
     # y_edv = np.concatenate(y_edv)
     # yhat_esv = np.concatenate(yhat_esv)
     # yhat_edv = np.concatenate(yhat_edv)
+    if not save_all:
+        yhat_ef = np.concatenate(yhat_ef)
+    y_ef = np.concatenate(y_ef)
     
     return (epoch_loss,
             total_seg,
@@ -186,10 +190,11 @@ def run(num_epochs=50,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if "unet3D" in modelname.split('_'):
+    if "unet3d" in modelname.split('_'):
         model = UNet3D(in_channels=3, out_channels=1)
     else:
-        model = DeepLabV3_multi_main()
+#         model = DeepLabV3_multi_main()
+        model = R2Plus1D_unet_multi(layer_sizes=[2, 2, 2, 2])
         # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
         
     # print(model)
@@ -421,11 +426,11 @@ def run(num_epochs=50,
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(num_epochs=50,
-        modelname="unet3D_seg_m",
+        modelname="r2plus1d_seg",
         frames=32,
         period=2,
         pretrained=False,
-        batch_size=8,
+        batch_size=6,
         save_segmentation=False)
 
 # run(num_epochs=50,

@@ -16,8 +16,6 @@ def normalize(x, minV, maxV):
     # 112*0.1 = 11 pixel movement
 #     minV = -0.1
 #     maxV = 0.1
-    minV = max(minV, x.min())
-    maxV = min(maxV, x.max())
     out = (x - minV)/ (maxV - minV)
     out[out > 1] = 1
     out[out<0] = 0
@@ -53,7 +51,7 @@ def calcflow(video, path, videolist,filename, save=False):
     nSORIterations = 10
     colType = 1  # 0 or default:RGB, 1:GRAY (but pass gray image with shape (h,w,1))
     # flowout = torch.FloatTensor(2,(video.shape[1]-1),video.shape[2],video.shape[3])
-    flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]))
+    flowout = np.zeros((2,(video.shape[1]-1),video.shape[2],video.shape[3]),dtype=video.dtype)
 #     flowout = np.zeros((3,(video.shape[1]-1),video.shape[2],video.shape[3]))
     for i in range(video.shape[1] - 1):
 #         print(filename)
@@ -272,7 +270,7 @@ class Echo3Dftv_rand(torch.utils.data.Dataset):
                 else:
                     flow_buf = []
                     for c in range(video.shape[0]):
-                        flowout = calcflow(video[c], flow_filename,videolist[c],self.fnames[index],  save=True)
+                        flowout = np.float32(calcflow(video[c], flow_filename,videolist[c],self.fnames[index],  save=True))
                         flow_buf.append(flowout)
                     flow_buf = tuple(flow_buf)
                     flow_buf = np.stack(tuple(flow_buf))

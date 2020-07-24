@@ -13,6 +13,7 @@ import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_multi, UNet3D_multi_1,UNet3D_multi_2,UNet3D_multi_3,UNet3D_multi_4
 from echonet.models.deeplabv3 import DeepLabV3_multi_main
+from echonet.models.r2plus1D import R2Plus1D_unet_multi
 
 import sklearn.metrics
 from echonet.datasets.echo import Echo
@@ -272,9 +273,9 @@ def run(num_epochs=50,
             model = UNet3D_multi_4(in_channels=3, out_channels=1)
 #         model = UNet3D_multi(in_channels=3, out_channels=1)
     else:
-        model = DeepLabV3_multi_main()
+        model = R2Plus1D_unet_multi(layer_sizes=[2, 2, 2, 2])
         # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
-        
+#     print(model)
     # print(model)
     # model.classifier[-1] = torch.nn.Conv2d(model.classifier[-1].in_channels, 1, kernel_size=model.classifier[-1].kernel_size)
     if device.type == "cuda":
@@ -574,18 +575,28 @@ def run(num_epochs=50,
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-for i in range(1,0,-1):
-    modelname = "unet3D_seg_m_notshare" + str(i)
-    run(num_epochs=50,
-            modelname=modelname,
-            frames=32,
-            period=2,
-            pretrained=False,
-            batch_size=8,
-            save_segmentation=False,
-            run_ef_test=False)
-# -
+run(num_epochs=50,
+        modelname="r2plus1D_seg_m_notshare3",
+        frames=32,
+        period=2,
+        pretrained=False,
+        batch_size=6,
+        save_segmentation=False,
+        run_ef_test=False)
 
+# +
+# for i in range(1,0,-1):
+#     modelname = "unet3D_seg_m_notshare" + str(i)
+#     run(num_epochs=50,
+#             modelname=modelname,
+#             frames=32,
+#             period=2,
+#             pretrained=False,
+#             batch_size=8,
+#             save_segmentation=False,
+#             run_ef_test=False)
+
+# +
 # run(num_epochs=50,
 #         modelname="unet3D_seg",
 #         frames=112,

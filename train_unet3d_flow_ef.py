@@ -50,7 +50,7 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
-
+                    
 #                 flow size 8,2,31,112,112
 #                 if blocks is not None:
 #                     batch, n_crops, c, f, h, w = flow.shape
