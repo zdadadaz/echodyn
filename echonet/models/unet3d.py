@@ -298,7 +298,7 @@ class UNet3D_ef(nn.Module):
 # model = UNet3D_ef()
 # X = torch.rand(2,3,32,112,112)
 # # flow = torch.rand(3*2,2,32,112,112)
-# # print(model)
+# print(model.fc[2].bias.data)
 # print(model.get_pretrain()
 # # print(model(X).size())
 # -
