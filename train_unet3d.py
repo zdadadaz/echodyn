@@ -311,7 +311,7 @@ run(modelname="unet3d_ef_noNew",
         period=1,
         pretrained=False,
         batch_size=2,
-        run_test=True,
+        run_test=False,
         num_epochs = 50)
 
 run(modelname="r2plus1d_50",
@@ -319,7 +319,7 @@ run(modelname="r2plus1d_50",
         period=2,
         pretrained=True,
         batch_size=8,
-        run_test=True,
-        num_epochs = 50)
+        run_test=False,
+        num_epochs = 100)
 
 
