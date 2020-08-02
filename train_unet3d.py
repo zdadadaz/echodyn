@@ -12,8 +12,9 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
-from echonet.models.resnet3d import resnet50
-from echonet.models.deeplabv3 import DeepLabV3_multi_main
+from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
+# from echonet.models.resnet3d import resnet50
+# from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
 
@@ -43,14 +44,9 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
             for (i, (X, outcome)) in enumerate(dataloader):
 
                 if  flag >= 0 and (not (i < endRange and i >= frontRange)):
-                    print("qq")
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
-#                 if flag == 1 and i <= half_len:
-#                     pbar.update()
-#                     continue
-                
                 y.append(outcome.numpy())
                 X = X.to(device)
                 outcome = outcome.to(device)
@@ -133,11 +129,14 @@ def run(num_epochs=45,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3d" in modelname.split('_'):
-#         model = UNet3D_ef(in_channels=3, out_channels=1)
-        print("unet3d_separate")
-        model = UNet3D_ef_separate(in_channels=3, out_channels=1)
+        print('no new-net')
+        model = UNet3D_ef(in_channels=3, out_channels=1)
+        model.fc[2].bias.data[0] = 55.6
+#         print("unet3d_separate")
+#         model = UNet3D_ef_separate(in_channels=3, out_channels=1)
     else:
-        model= resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
+        model = gen_r2p1d(**{'model_depth':50, 'pretrain' : './../3D-ResNets-PyTorch/pretrain_model/r2p1d50_K_200ep.pth', 'funetune_size':1,'n_input_channels':3})
+#         model= resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
 #         model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
     
 #         model.fc = torch.nn.Linear(model.fc.in_features, 1)
@@ -166,7 +165,7 @@ def run(num_epochs=45,
               }
 
 # Data preparation
-    train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
+    train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=16)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
         indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
@@ -307,21 +306,20 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(modelname="unet3d_ef_sep2",
-        frames=32,
-        period=2,
+run(modelname="unet3d_ef_noNew",
+        frames=128,
+        period=1,
         pretrained=False,
-        batch_size=8,
-        run_test=True,
+        batch_size=2,
+        run_test=False,
         num_epochs = 50)
 
-# +
-# run(modelname="r2plus1d_18",
-#         frames=32,
-#         period=2,
-#         pretrained=True,
-#         batch_size=8,
-#         run_test=True)
-# -
+run(modelname="r2plus1d_50",
+        frames=32,
+        period=2,
+        pretrained=True,
+        batch_size=8,
+        run_test=False,
+        num_epochs = 100)
 
 

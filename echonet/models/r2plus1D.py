@@ -1,5 +1,6 @@
 import math
 
+import torch
 import torch.nn as nn
 from torch.nn.modules.utils import _triple
 
@@ -210,3 +211,135 @@ class R2Plus1DClassifier(nn.Module):
         x = self.linear(x) 
 
         return x   
+
+
+from collections import OrderedDict
+class R2Plus1D_unet_multi(nn.Module):
+    r"""Forms the overall ResNet feature extractor by initializng 5 layers, with the number of blocks in 
+    each layer set by layer_sizes, and by performing a global average pool at the end producing a 
+    512-dimensional vector for each element in the batch.
+        
+        Args:
+            layer_sizes (tuple): An iterable containing the number of blocks in each layer
+            block_type (Module, optional): Type of block that is to be used to form the layers. Default: SpatioTemporalResBlock. 
+        """
+    def __init__(self, layer_sizes, block_type=SpatioTemporalResBlock):
+        super(R2Plus1D_unet_multi, self).__init__()
+
+        features = 32
+        out_channels=1
+        # first conv, with stride 1x2x2 and kernel size 3x7x7
+        self.conv1 = SpatioTemporalConv(3, 64, [3, 7, 7], stride=[1, 2, 2], padding=[1, 3, 3])
+        # output of conv2 is same size as of conv1, no downsampling needed. kernel_size 3x3x3
+        self.conv2 = SpatioTemporalResLayer(64, 64, 3, layer_sizes[0], block_type=block_type)
+        # each of the final three layers doubles num_channels, while performing downsampling 
+        # inside the first block
+        self.conv3 = SpatioTemporalResLayer(64, 128, 3, layer_sizes[1], block_type=block_type, downsample=True)
+        self.conv4 = SpatioTemporalResLayer(128, 256, 3, layer_sizes[2], block_type=block_type, downsample=True)
+        self.conv5 = SpatioTemporalResLayer(256, 512, 3, layer_sizes[3], block_type=block_type, downsample=True)
+        
+        # EF
+        self.conv3_ef = SpatioTemporalResLayer(64, 128, 3, layer_sizes[1], block_type=block_type, downsample=True)
+        self.conv4_ef = SpatioTemporalResLayer(128, 256, 3, layer_sizes[2], block_type=block_type, downsample=True)
+        self.conv5_ef = SpatioTemporalResLayer(256, 512, 3, layer_sizes[3], block_type=block_type, downsample=True)
+        
+        self.upconv4 = nn.ConvTranspose3d(
+            features * 16, features * 8, kernel_size=2, stride=2
+        )
+        self.decoder4 = R2Plus1D_unet_multi._block((features * 8) * 2, features * 8, name="dec4")
+        self.upconv3 = nn.ConvTranspose3d(
+            features * 8, features * 4, kernel_size=2, stride=2
+        )
+        self.decoder3 = R2Plus1D_unet_multi._block((features * 4) * 2, features * 4, name="dec3")
+        self.upconv2 = nn.ConvTranspose3d(
+            features * 4, features * 2, kernel_size=2, stride=2
+        )
+        self.decoder2 = R2Plus1D_unet_multi._block((features * 2) * 2, features * 2 , name="dec2")
+        
+        self.decoder1 = R2Plus1D_unet_multi._block(features * 2 *2, features, name="dec1")
+        self.upconv1 = nn.ConvTranspose3d(
+            features, features, kernel_size=[1, 2, 2], stride=[1, 2, 2]
+        )
+        self.conv = nn.Conv3d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
+        
+        # global average pooling of the output
+        self.pool = nn.AdaptiveAvgPool3d(1)
+        self.linear = nn.Linear(512, 1) 
+    
+    def forward(self, x):
+        enc1 = self.conv1(x) #   [6, 64, 32, 56, 56]
+        enc2 = self.conv2(enc1)# [6, 64, 32, 56, 56]
+        enc3 = self.conv3(enc2)# [6, 128, 16, 28, 28]
+        enc4 = self.conv4(enc3)# [6, 256, 8, 14, 14]
+        enc5 = self.conv5(enc4)# [6, 512, 4, 7, 7]
+        
+        dec4 = self.upconv4(enc5) #[6, 256, 8, 14, 14]
+        dec4 = torch.cat((dec4, enc4), dim=1)
+        dec4 = self.decoder4(dec4) # [6, 256, 8, 14, 14]
+        dec3 = self.upconv3(dec4)
+        dec3 = torch.cat((dec3, enc3), dim=1) 
+        dec3 = self.decoder3(dec3) # [6, 128, 16, 28, 28]
+        dec2 = self.upconv2(dec3)
+        dec2 = torch.cat((dec2, enc2), dim=1)
+        dec2 = self.decoder2(dec2)# [6, 64, 32, 56, 56]
+        dec1 = torch.cat((dec2, enc1), dim=1) # [6, 128, 32, 56, 56]  
+        dec1 = self.decoder1(dec1) # [6, 32, 32, 56, 56] 
+        dec1 = self.upconv1(dec1) # [6, 32, 32, 112, 112]
+        
+        # EF
+        enc3_ef = self.conv3_ef(enc2)# [6, 128, 16, 28, 28]
+        enc4_ef = self.conv4_ef(enc3_ef)# [6, 256, 8, 14, 14]
+        enc5_ef = self.conv5_ef(enc4_ef)# [6, 512, 4, 7, 7]
+        
+        x = self.pool(enc5_ef)
+        
+        return self.conv(dec1), self.linear(x.view(-1, 512))
+#         return self.conv(dec1)
+    
+    @staticmethod
+    def _block(in_channels, features, name):
+        return nn.Sequential(
+            OrderedDict(
+                [
+                    (
+                        name + "conv1",
+                        nn.Conv3d(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            stride=1,
+                            bias=False,
+                        ),
+                    ),
+#                     (name + "norm1", nn.InstanceNorm3d(num_features=features)),
+#                     (name + "relu1", nn.LeakyReLU(negative_slope=0.01, inplace=True)),
+                    (name + "norm1", nn.BatchNorm3d(num_features=features)),
+                    (name + "relu1", nn.ReLU(inplace=True)),
+                    (
+                        name + "conv2",
+                        nn.Conv3d(
+                            in_channels=features,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            stride=1,
+                            bias=False,
+                        ),
+                    ),
+#                     (name + "norm2", nn.InstanceNorm3d(num_features=features)),
+#                     (name + "relu2", nn.LeakyReLU(negative_slope=0.01, inplace=True)),
+                    (name + "norm2", nn.BatchNorm3d(num_features=features)),
+                    (name + "relu2", nn.ReLU(inplace=True)),
+                ]
+            )
+        )
+
+# +
+# X = torch.rand(3*2,3,32,112,112)
+# # flow = torch.rand(3*2,2,32,112,112)
+# model = R2Plus1D_unet_multi(layer_sizes=[2, 2, 2, 2])
+# ef, seg = model(X)
+# print(ef.size(), seg.size())

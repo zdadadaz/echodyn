@@ -141,3 +141,149 @@ def DeepLabV3_multi_main():
     classifier = DeepLabHead(2048, 1)
     model= DeepLabV3_multi(backbone, classifier)
     return model
+
+
+class ASPPConv_3D(nn.Sequential):
+    def __init__(self, in_channels, out_channels, dilation):
+        modules = [
+            nn.Conv3d(in_channels, out_channels, 3, padding=dilation, dilation=dilation, bias=False),
+            nn.BatchNorm3d(out_channels),
+            nn.ReLU()
+        ]
+        super(ASPPConv_3D, self).__init__(*modules)
+
+
+class ASPPPooling_3D(nn.Sequential):
+    def __init__(self, in_channels, out_channels):
+        super(ASPPPooling_3D, self).__init__(
+            nn.AdaptiveAvgPool3d((None,1,1)),
+            nn.Conv3d(in_channels, out_channels, 1, bias=False),
+            nn.BatchNorm3d(out_channels),
+            nn.ReLU())
+
+    def forward(self, x):
+        size = x.shape[-2:]
+        for mod in self:
+            x = mod(x)
+        size_out = x.shape[:-2] + size
+#         return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
+        out = torch.zeros(size_out)
+        for f in range(out.size(2)):
+            out[:,:,f,:,:] = F.interpolate(x[:,:,f,:,:], size=size, mode='bilinear', align_corners=False)
+        return out
+
+
+class ASPP_3D(nn.Module):
+    def __init__(self, in_channels, atrous_rates):
+        super(ASPP_3D, self).__init__()
+        out_channels = 256
+        modules = []
+        modules.append(nn.Sequential(
+            nn.Conv3d(in_channels, out_channels, 1, bias=False),
+            nn.BatchNorm3d(out_channels),
+            nn.ReLU()))
+
+        rate1, rate2, rate3 = tuple(atrous_rates)
+        modules.append(ASPPConv_3D(in_channels, out_channels, rate1))
+        modules.append(ASPPConv_3D(in_channels, out_channels, rate2))
+        modules.append(ASPPConv_3D(in_channels, out_channels, rate3))
+        modules.append(ASPPPooling_3D(in_channels, out_channels))
+
+        self.convs = nn.ModuleList(modules)
+
+        self.project = nn.Sequential(
+            nn.Conv3d(5 * out_channels, out_channels, 1, bias=False),
+            nn.BatchNorm3d(out_channels),
+            nn.ReLU(),
+            nn.Dropout(0.5))
+
+    def forward(self, x):
+        res = []
+        for conv in self.convs:
+            res.append(conv(x))
+        res = torch.cat(res, dim=1)
+        return self.project(res)
+
+
+class DeepLabHead_3D(nn.Sequential):
+    def __init__(self, in_channels, num_classes):
+        super(DeepLabHead_3D, self).__init__(
+            ASPP_3D(in_channels, [12, 24, 36]),
+            nn.Conv3d(256, 256, 3, padding=1, bias=False),
+            nn.BatchNorm3d(256),
+            nn.ReLU(),
+            nn.Conv3d(256, num_classes, 1)
+        )
+
+
+class DeepLabV3_3D(nn.Module):
+    def __init__(self, backbone, classifier):
+        super(DeepLabV3_3D, self).__init__()
+        self.backbone = backbone
+        self.classifier = classifier
+        
+    def forward(self, x):
+        input_shape = x.shape[-2:]
+        
+        xx = self.backbone(x)
+        xx1 = self.classifier(xx)
+#         y = F.interpolate(xx1, size=input_shape, mode='bilinear', align_corners=False)
+#         return y
+        size_out = xx1.shape[:-2] + input_shape
+        out = torch.zeros(size_out)
+        for f in range(out.size(2)):
+            out[:,:,f,:,:] = F.interpolate(xx1[:,:,f,:,:], size=input_shape, mode='bilinear', align_corners=False)
+        return out
+        
+
+
+def DeepLabV3_3D_main():
+    model = torchvision.models.video.__dict__['r2plus1d_18'](pretrained=False)
+    backbone = torch.nn.Sequential(*(list(model.children())[:-2]))
+    classifier = DeepLabHead_3D(512, 1)
+    model = DeepLabV3_3D(backbone, classifier)
+    return model
+
+
+class FCN(nn.Module):
+    def __init__(self, backbone, in_channels, num_classes):
+        super(FCN, self).__init__()
+        out_channels = 512
+        modules = []
+        self.backbone = backbone
+        self.fcn = nn.Sequential(
+            # fc6
+            nn.Conv3d(512, 4096, (4,7,7)),  # origin = 7
+            nn.ReLU(inplace=True),
+            nn.Dropout3d(),
+            # fc7
+            nn.Conv3d(4096, 4096, 1),
+            nn.ReLU(inplace=True),
+            nn.Dropout3d()
+        )
+        
+        # last
+        self.last = nn.Sequential(
+            nn.Conv3d(4096, num_classes, 1),
+            nn.ConvTranspose3d(num_classes, num_classes, 32, stride=28,padding=(0,2,2),bias=False)
+        )
+        
+    def forward(self, x):
+        x = self.backbone(x)
+        print(x.size())
+        x = self.fcn(x)
+        x = self.last(x)
+        return x[:,:,:,]
+
+
+def r2p1_fcn3d_main():
+    model = torchvision.models.video.__dict__['r2plus1d_18'](pretrained=False)
+    backbone = torch.nn.Sequential(*(list(model.children())[:-2]))
+    model = FCN(backbone, 512, 1)
+    return model
+
+# X = torch.rand(3*2,3,32,112,112)
+# # flow = torch.rand(3*2,2,32,112,112)
+# model = r2p1_fcn3d_main()
+# print(model(X).size())
+
