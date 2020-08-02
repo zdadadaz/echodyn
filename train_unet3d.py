@@ -12,7 +12,8 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
-from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
+from echonet.models.s3d import model_s3d
+# from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
 # from echonet.models.resnet3d import resnet50
 # from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
@@ -24,9 +25,11 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     criterion = torch.nn.MSELoss()  # Standard L2 loss
 
     runningloss = 0.0
-
-    model.train(phase == 'train')
-
+    if phase=='train':
+        model.train(phase == 'train')
+    else:
+        model.eval()
+        
     counter = 0
     summer = 0
     summer_squared = 0
@@ -34,7 +37,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     yhat = []
     y = []
     half_len = int(len(dataloader)/divide)
-    if flag == divide:
+    if flag == divide-1:
         endRange = len(dataloader)
     else:
         endRange = half_len*(flag+1)
@@ -135,7 +138,9 @@ def run(num_epochs=45,
 #         print("unet3d_separate")
 #         model = UNet3D_ef_separate(in_channels=3, out_channels=1)
     else:
-        model = gen_r2p1d(**{'model_depth':50, 'pretrain' : './../3D-ResNets-PyTorch/pretrain_model/r2p1d50_K_200ep.pth', 'funetune_size':1,'n_input_channels':3})
+        pretrain_path = './../s3d/RGB_imagenet.pkl'
+        model = model_s3d(pretrain_path,1,0.7)
+#         model = gen_r2p1d(**{'model_depth':50, 'pretrain' : './../3D-ResNets-PyTorch/pretrain_model/r2p1d50_K_200ep.pth', 'funetune_size':1,'n_input_channels':3})
 #         model= resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
 #         model = torchvision.models.video.__dict__[modelname](pretrained=pretrained)
     
@@ -165,7 +170,7 @@ def run(num_epochs=45,
               }
 
 # Data preparation
-    train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=16)
+    train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
         indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
@@ -201,7 +206,7 @@ def run(num_epochs=45,
                     torch.cuda.reset_max_memory_cached(i)
                 loss, yhat, y = run_epoch(model, dataloaders[phase], phase, optim, device)
                 
-                f.write("{},{},{},{},{},{},{},{},{}\n".format(epoch,
+                f.write("{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                               phase,
                                                               loss,
                                                               sklearn.metrics.r2_score(yhat, y),
@@ -209,7 +214,9 @@ def run(num_epochs=45,
                                                               y.size,
                                                               sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
                                                               sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
-                                                              batch_size))
+                                                              batch_size,
+                                                              optim.param_groups[0]['lr']
+                                                              ))
                 f.flush()
             scheduler.step()
 
@@ -306,20 +313,20 @@ def run(num_epochs=45,
                 plt.close(fig)
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-run(modelname="unet3d_ef_noNew",
-        frames=128,
-        period=1,
-        pretrained=False,
-        batch_size=2,
-        run_test=False,
-        num_epochs = 50)
+# run(modelname="unet3d_ef_noNew",
+#         frames=128,
+#         period=1,
+#         pretrained=False,
+#         batch_size=2,
+#         run_test=True,
+#         num_epochs = 50)
 
-run(modelname="r2plus1d_50",
+run(modelname="s3d_ef_d07",
         frames=32,
         period=2,
         pretrained=True,
-        batch_size=8,
-        run_test=False,
-        num_epochs = 100)
+        batch_size=16,
+        run_test=True,
+        num_epochs = 50)
 
 

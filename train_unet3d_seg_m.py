@@ -12,7 +12,7 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_multi, UNet3D_multi_1,UNet3D_multi_2,UNet3D_multi_3,UNet3D_multi_4
-from echonet.models.deeplabv3 import DeepLabV3_multi_main
+from echonet.models.deeplabv3 import r2p1_fcn3d_main
 from echonet.models.r2plus1D import R2Plus1D_unet_multi
 
 import sklearn.metrics
@@ -81,10 +81,14 @@ def run_epoch(model, dataloader, phase, optim, device,save_all=False, blocks=Non
                 small_trace = small_trace.to(device)
                 if blocks is None:
                     outputs, ef_outputs = model(X)
+#                     outputs = model(X)
+#                     ef_outputs = ef
                 else:
                     tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
                     outputs = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
                     ef_outputs = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
+#                     outputs = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
+#                     ef_outputs = ef
                     
                 # large frame
                 loss_large = torch.nn.functional.binary_cross_entropy_with_logits(outputs[batchidx, 0, fidlg, :, :], large_trace, reduction="sum")
@@ -187,7 +191,7 @@ def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=-1, 
     runningloss_ef = 0
     count = 0
     half_len = int(len(dataloader)/divide)
-    if flag == divide:
+    if flag == divide-1:
         endRange = len(dataloader)
     else:
         endRange = half_len*(flag+1)
@@ -196,7 +200,7 @@ def run_epoch_EF(model, dataloader, phase, optim, device, blocks=None, flag=-1, 
         with tqdm.tqdm(total=len(dataloader)) as pbar:
             for (i, (X, ef, fid)) in enumerate(dataloader):
                 if  flag >= 0 and (not (i < endRange and i >= frontRange)):
-                    print("qq")
+#                     print("qq")
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
@@ -273,7 +277,8 @@ def run(num_epochs=50,
             model = UNet3D_multi_4(in_channels=3, out_channels=1)
 #         model = UNet3D_multi(in_channels=3, out_channels=1)
     else:
-        model = R2Plus1D_unet_multi(layer_sizes=[2, 2, 2, 2])
+#         model = R2Plus1D_unet_multi(layer_sizes=[2, 2, 2, 2])
+        model = r2p1_fcn3d_main()
         # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
 #     print(model)
     # print(model)
@@ -575,26 +580,27 @@ def run(num_epochs=50,
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-run(num_epochs=50,
-        modelname="r2plus1D_seg_m_notshare3",
-        frames=32,
-        period=2,
-        pretrained=False,
-        batch_size=6,
-        save_segmentation=False,
-        run_ef_test=False)
+# run(num_epochs=50,
+#         modelname="r2plus1D_seg_m_FCN",
+#         frames=32,
+#         period=2,
+#         pretrained=False,
+#         batch_size=20,
+#         save_segmentation=False,
+#         run_ef_test=False)
+# -
 
-# +
-# for i in range(1,0,-1):
-#     modelname = "unet3D_seg_m_notshare" + str(i)
-#     run(num_epochs=50,
-#             modelname=modelname,
-#             frames=32,
-#             period=2,
-#             pretrained=False,
-#             batch_size=8,
-#             save_segmentation=False,
-#             run_ef_test=False)
+for i in range(3,2,-1):
+    modelname = "unet3D_seg_m_noNew_notshare" + str(i)
+    run(num_epochs=50,
+            modelname=modelname,
+            frames=128,
+            period=1,
+            pretrained=False,
+            batch_size=2,
+            save_segmentation=False,
+            lr_step_period = 15,
+            run_ef_test=False)
 
 # +
 # run(num_epochs=50,
