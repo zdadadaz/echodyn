@@ -153,7 +153,7 @@ class Echo_tsn(torch.utils.data.Dataset):
             peaks = self.peak[self.fnames[index]]
             for cc in range(self.crops):
                 if len(peaks) == 0:
-                    random_num = np.random.choice(f - (length - 1) * self.period, self.crops)
+                    random_num = np.random.choice(f - (length - 1) * self.period)
                 elif self.split == 'train':
                     peak = np.random.choice(peaks)
                     random_num = peak - np.random.choice(length)*self.period
