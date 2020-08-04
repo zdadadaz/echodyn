@@ -61,6 +61,26 @@ class TSN(nn.Module):
         self.model_f.stem[0].weight.data = self.model.stem[0].weight.data[:,:2,...]
 
 
+class TSN_r2p1_18(nn.Module):
+    def __init__(self, batch=1, pretrained = True):
+        super(TSN_r2p1_18, self).__init__()
+        self.pretrained = pretrained
+        self._prepare_model()
+        self.consensus = ConsensusModule('avg')
+        self.batch = batch
+#         
+    def forward(self, x):
+        # batch*n_crops, c, f, h, w
+        x = self.model(x)
+        x = self.consensus(x.view(self.batch,-1))
+        return x  # (batch,1)
+    
+    def _prepare_model(self):
+        self.model = torchvision.models.video.__dict__['r2plus1d_18'](pretrained=self.pretrained)
+        self.model.fc = torch.nn.Linear(self.model.fc.in_features, 1)
+        self.model.fc.bias.data[0] = 55.6
+
+
 # +
 class TSN_resnet(nn.Module):
     def __init__(self, batch=1, pretrained = True):

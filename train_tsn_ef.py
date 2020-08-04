@@ -11,26 +11,25 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
-# from echonet.models.s3d import model_s3d
-# from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
-# from echonet.models.resnet3d import resnet50
-# from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.models.tsn import TSN_r2p1_18
+from echonet.datasets.echo3d_tsn import Echo_tsn
+# from echonet.datasets.echo_3d_flow import Echo3Df
+# from echonet.datasets.echo_3d_flow_random import Echo3Df_rand
+# from echonet.datasets.echo_3d_flow_random_seg import Echo3Df_rand_seg
+# from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.datasets.echo import Echo
 import sklearn.metrics
+import torch.nn as nn
 
 
-def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=None, flag=-1, divide = 2):
+def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False, blocks=None, flag=-1, divide = 2):
 
     criterion = torch.nn.MSELoss()  # Standard L2 loss
 
     runningloss = 0.0
-    if phase=='train':
-        model.train(phase == 'train')
-    else:
-        model.eval()
-        
+
+    model.train(phase == 'train')
+
     counter = 0
     summer = 0
     summer_squared = 0
@@ -51,6 +50,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
                     pbar.set_postfix_str("skip, {:.2f}".format(i))
                     pbar.update()
                     continue
+                
                 y.append(outcome.numpy())
                 X = X.to(device)
                 outcome = outcome.to(device)
@@ -72,10 +72,12 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
 
                 if average:
-                    outputs = outputs.view(batch, n_crops, -1).mean(1)
+                    outputs = outputs.view(batch, -1).mean(1)
+#                     outputs = outputs.view(batch, n_crops, -1).mean(1)
                     
                 if not save_all:
                     yhat.append(outputs.view(-1).to("cpu").detach().numpy())
+
 
 #                 print(outputs.view(-1))
 #                 print(outcome)
@@ -105,18 +107,18 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
 # -
 
-# +
 def run(num_epochs=45,
         modelname="r3d_18",
         tasks="EF",
         frames=16,
         period=4,
+        segment=1,
         pretrained=True,
         output=None,
         device=None,
         n_train_patients=None,
         seed=0,
-        num_workers=5,
+        num_workers=4,
         batch_size=20,
         lr_step_period=None,
         run_test=False,
@@ -125,30 +127,16 @@ def run(num_epochs=45,
     ### Seed RNGs ###
     np.random.seed(seed)
     torch.manual_seed(seed)
-
+    
+    tasks = ['EF']
     if output is None:
         output = os.path.join("output", "video", "{}_{}_{}_{}".format(modelname, frames, period, "pretrained" if pretrained else "random"))
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
-    if "unet3d" in modelname.split('_'):
-        print('no new-net')
-        model = UNet3D_ef(in_channels=3, out_channels=1)
-        model.fc[2].bias.data[0] = 55.6
-#         print("unet3d_separate")
-#         model = UNet3D_ef_separate(in_channels=3, out_channels=1)
-    else:
-#         pretrain_path = './../s3d/RGB_imagenet.pkl'
-#         model = model_s3d(pretrain_path,1,0.7)
-#         model = gen_r2p1d(**{'model_depth':50, 'pretrain' : './../3D-ResNets-PyTorch/pretrain_model/r2p1d50_K_200ep.pth', 'funetune_size':1,'n_input_channels':3})
-#         model= resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
-
-#             model = torchvision.models.video.__dict__[modelname[:-7]](pretrained=pretrained)
-
-#             model.fc = torch.nn.Linear(model.fc.in_features, 1)
-#             model.fc.bias.data[0] = 55.6
-
+    model = TSN_r2p1_18(batch=batch_size, pretrained = pretrained)
+    
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
@@ -158,9 +146,6 @@ def run(num_epochs=45,
         lr_step_period = math.inf
     scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
 
-
-# -
-
 # image normalization
     mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
 
@@ -169,18 +154,22 @@ def run(num_epochs=45,
               "std": std,
               "length": frames,
               "period": period,
+              "crops":segment,
               }
 
+# +
 # Data preparation
-    train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
+#     train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
+    train_dataset = Echo_tsn(split="train", **kwargs,pad=12)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
         indices = np.random.choice(len(train_dataset), n_train_patients, replace=False)
         train_dataset = torch.utils.data.Subset(train_dataset, indices)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"), drop_last=True)
+    val_dataset = Echo_tsn(split="val", **kwargs)
     val_dataloader = torch.utils.data.DataLoader(
-        echonet.datasets.Echo(split="val", **kwargs), batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
+        val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
 
     with open(os.path.join(output, "log.csv"), "a") as f:
@@ -206,9 +195,9 @@ def run(num_epochs=45,
                 for i in range(torch.cuda.device_count()):
                     torch.cuda.reset_max_memory_allocated(i)
                     torch.cuda.reset_max_memory_cached(i)
-                loss, yhat, y = run_epoch(model, dataloaders[phase], phase, optim, device)
+                loss, yhat, y = run_epoch(model, modelname, dataloaders[phase], phase, optim, device)
                 
-                f.write("{},{},{},{},{},{},{},{},{},{}\n".format(epoch,
+                f.write("{},{},{},{},{},{},{},{},{}\n".format(epoch,
                                                               phase,
                                                               loss,
                                                               sklearn.metrics.r2_score(yhat, y),
@@ -216,9 +205,7 @@ def run(num_epochs=45,
                                                               y.size,
                                                               sum(torch.cuda.max_memory_allocated() for i in range(torch.cuda.device_count())),
                                                               sum(torch.cuda.max_memory_cached() for i in range(torch.cuda.device_count())),
-                                                              batch_size,
-                                                              optim.param_groups[0]['lr']
-                                                              ))
+                                                              batch_size))
                 f.flush()
             scheduler.step()
 
@@ -247,94 +234,103 @@ def run(num_epochs=45,
         # Testing
         if run_test:
             for split in ["val", "test"]:
+                dataset = Echo_tsn(split=split, **kwargs)
                 dataloader = torch.utils.data.DataLoader(
-                    echonet.datasets.Echo(split=split, **kwargs),
+                    dataset,
                     batch_size=batch_size, num_workers=num_workers, shuffle=True, pin_memory=(device.type == "cuda"))
-                loss, yhat, y = run_epoch(model, dataloader, split, None, device)
+                loss, yhat, y = run_epoch(model,modelname, dataloader, split, None, device)
                 f.write("{} (one crop) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, yhat, sklearn.metrics.r2_score)))
                 f.write("{} (one crop) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_absolute_error)))
                 f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_squared_error)))))
                 f.flush()
 
-                ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
-                dataloader = torch.utils.data.DataLoader(
-                    ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-                yhat = []
-                y = []
-                divide= 5
-                for d in range(divide):
-                    loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = d, divide = divide)
-                    yhat.append(yhat1)
-                    y.append(y1)
-#                 loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
-#                 yhat.append(yhat1)
-#                 y.append(y1)
-                yhat = np.concatenate(yhat)
-                y = np.concatenate(y)
-                f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
-                f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
-                f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
-                f.flush()
+#                 ds = Echo3Df_rand_seg(split=split, **kwargs, crops="all")
+#                 dataloader = torch.utils.data.DataLoader(
+#                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+#                 yhat = []
+#                 y = []
+#                 divide= 5
+#                 for d in range(divide):
+#                     loss, yhat1, y1 = run_epoch(model,modelname, dataloader, split, None, device, save_all=True, blocks=50, flag = d, divide = divide)
+#                     yhat.append(yhat1)
+#                     y.append(y1)
+# #                 loss, yhat1, y1 = run_epoch(model,modelname, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
+# #                 yhat.append(yhat1)
+# #                 y.append(y1)
+#                 yhat = np.concatenate(yhat)
+#                 y = np.concatenate(y)
+#                 f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
+#                 f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
+#                 f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
+#                 f.flush()
 
-                with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-                    for (filename, pred) in zip(ds.fnames, yhat):
-                        for (i, p) in enumerate(pred):
-                            g.write("{},{},{:.4f}\n".format(filename, i, p))
-                echonet.utils.latexify()
-                yhat = np.array(list(map(lambda x: x.mean(), yhat)))
+#                 with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
+#                     for (filename, pred) in zip(ds.fnames, yhat):
+#                         for (i, p) in enumerate(pred):
+#                             g.write("{},{},{:.4f}\n".format(filename, i, p))
+#                 echonet.utils.latexify()
+#                 yhat = np.array(list(map(lambda x: x.mean(), yhat)))
 
-                fig = plt.figure(figsize=(3, 3))
-                lower = min(y.min(), yhat.min())
-                upper = max(y.max(), yhat.max())
-                plt.scatter(y, yhat, color="k", s=1, edgecolor=None, zorder=2)
-                plt.plot([0, 100], [0, 100], linewidth=1, zorder=3)
-                plt.axis([lower - 3, upper + 3, lower - 3, upper + 3])
-                plt.gca().set_aspect("equal", "box")
-                plt.xlabel("Actual EF (%)")
-                plt.ylabel("Predicted EF (%)")
-                plt.xticks([10, 20, 30, 40, 50, 60, 70, 80])
-                plt.yticks([10, 20, 30, 40, 50, 60, 70, 80])
-                plt.grid(color="gainsboro", linestyle="--", linewidth=1, zorder=1)
-                # plt.gca().set_axisbelow(True)
-                plt.tight_layout()
-                plt.savefig(os.path.join(output, "{}_scatter.pdf".format(split)))
-                plt.close(fig)
+#                 fig = plt.figure(figsize=(3, 3))
+#                 lower = min(y.min(), yhat.min())
+#                 upper = max(y.max(), yhat.max())
+#                 plt.scatter(y, yhat, color="k", s=1, edgecolor=None, zorder=2)
+#                 plt.plot([0, 100], [0, 100], linewidth=1, zorder=3)
+#                 plt.axis([lower - 3, upper + 3, lower - 3, upper + 3])
+#                 plt.gca().set_aspect("equal", "box")
+#                 plt.xlabel("Actual EF (%)")
+#                 plt.ylabel("Predicted EF (%)")
+#                 plt.xticks([10, 20, 30, 40, 50, 60, 70, 80])
+#                 plt.yticks([10, 20, 30, 40, 50, 60, 70, 80])
+#                 plt.grid(color="gainsboro", linestyle="--", linewidth=1, zorder=1)
+#                 # plt.gca().set_axisbelow(True)
+#                 plt.tight_layout()
+#                 plt.savefig(os.path.join(output, "{}_scatter.pdf".format(split)))
+#                 plt.close(fig)
 
-                fig = plt.figure(figsize=(3, 3))
-                plt.plot([0, 1], [0, 1], linewidth=1, color="k", linestyle="--")
-                for thresh in [35, 40, 45, 50]:
-                    fpr, tpr, _ = sklearn.metrics.roc_curve(y > thresh, yhat)
-                    print(thresh, sklearn.metrics.roc_auc_score(y > thresh, yhat))
-                    plt.plot(fpr, tpr)
+#                 fig = plt.figure(figsize=(3, 3))
+#                 plt.plot([0, 1], [0, 1], linewidth=1, color="k", linestyle="--")
+#                 for thresh in [35, 40, 45, 50]:
+#                     fpr, tpr, _ = sklearn.metrics.roc_curve(y > thresh, yhat)
+#                     print(thresh, sklearn.metrics.roc_auc_score(y > thresh, yhat))
+#                     plt.plot(fpr, tpr)
 
-                plt.axis([-0.01, 1.01, -0.01, 1.01])
-                plt.xlabel("False Positive Rate")
-                plt.ylabel("True Positive Rate")
-                plt.tight_layout()
-                plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
-                plt.close(fig)
+#                 plt.axis([-0.01, 1.01, -0.01, 1.01])
+#                 plt.xlabel("False Positive Rate")
+#                 plt.ylabel("True Positive Rate")
+#                 plt.tight_layout()
+#                 plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
+#                 plt.close(fig)
+# -
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-# run(modelname="unet3d_ef_noNew",
-#         frames=128,
-#         period=1,
-#         pretrained=False,
-#         batch_size=2,
+
+# because video is too short, period = 1 and seg = 2
+run(modelname="r2p1_18_ef_tsn",
+        frames=32,
+        period=2,
+        segment=3,
+        pretrained=True,
+        batch_size=6,
+        run_test=False,
+        lr_step_period=15,
+        num_epochs = 50)
+
+# +
+# run(modelname="r2plus1_ef",
+#         frames=32,
+#         period=2,
+#         pretrained=True,
+#         batch_size=8,
 #         run_test=True,
 #         num_epochs = 50)
 
-run(modelname="r2plus1d_50",
-        frames=32,
-        period=2,
-        pretrained=True,
-        batch_size=8,
-        run_test=True,
-        num_epochs = 50)
+# +
 
-run(modelname="r2plus1d_18_author",
-        frames=32,
-        period=2,
-        pretrained=True,
-        batch_size=8,
-        run_test=True,
-        num_epochs = 45)
+# run(modelname="unet3d_ef_flow_xy_gray",
+#         frames=32,
+#         period=2,
+#         pretrained=False,
+#         batch_size=8,
+#         run_test=True,
+#         num_epochs = 50)
