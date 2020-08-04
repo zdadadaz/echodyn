@@ -158,7 +158,7 @@ class Echo_tsn(torch.utils.data.Dataset):
                     peak = np.random.choice(peaks)
                     random_num = peak - np.random.choice(length)*self.period
                 else:
-                    if cc < len(peak):
+                    if cc < len(peaks):
                         peak = peaks[cc]
                         random_num = peak - (length)*self.period
                     else:
