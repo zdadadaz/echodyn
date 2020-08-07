@@ -396,7 +396,7 @@ class UNet3D_ef_sim(nn.Module):
         x = self.features(x)
         Ef_out = self.fc(x)
         return Ef_out    
-        
+
 
 
 class UNet3D_sim(nn.Module):
@@ -448,7 +448,7 @@ class UNet3D_sim(nn.Module):
 
         x = self.conv(x)
         return x    
-        
+
 
 
 # model = UNet3D_ef_seg_stitch()
