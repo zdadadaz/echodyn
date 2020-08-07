@@ -458,7 +458,7 @@ class UNet3D_ef_seg_stitch(nn.Module):
         super(UNet3D_ef_seg_stitch, self).__init__()
         self.ef = UNet3D_ef_sim(in_channels=in_channels, out_channels=out_channels, init_features=init_features)
         self.seg = UNet3D_sim(in_channels=in_channels, out_channels=out_channels, init_features=init_features)
-        # self._init_models(self.ef,self.seg)
+        self._init_models(self.ef,self.seg)
         feature =  init_features
         stitch_in = [feature*2,feature*2,]
         stitches = []
@@ -483,6 +483,7 @@ class UNet3D_ef_seg_stitch(nn.Module):
         self.stitch = stitches
         
     def _init_models(self, ef, seg):
+        # checkpoint = torch.load("/Users/chienchichen/Desktop/UQ/capstone/medical/code/echodyn/output/segmentation/unet3d_notshare3/best.pt",map_location=torch.device('cpu'))
         checkpoint = torch.load("/home/jovyan/code/echodyn_m/output/segmentation/unet3D_seg_m_notshare3_32_2_random/best.pt")
         count = 0
         ef_state_dict = ef.state_dict()
@@ -492,9 +493,9 @@ class UNet3D_ef_seg_stitch(nn.Module):
             pre_dict[idx] = layer
         ef_map = [0,1,2,3] + [28,29,30,31,32,33,34,35]
         seg_map = [i for i in range(28)]
-        
         for idx,layer in enumerate(ef_state_dict.keys()):
             ef_state_dict[layer] = checkpoint['state_dict'][pre_dict[ef_map[idx]]]
+        for idx,layer in enumerate(seg_state_dict.keys()):
             seg_state_dict[layer] = checkpoint['state_dict'][pre_dict[seg_map[idx]]]
             
     def forward(self, x):
@@ -536,7 +537,7 @@ X = torch.rand(2,3,32,112,112)
 # # flow = torch.rand(3*2,2,32,112,112)
 # print(model.fc[2].bias.data)
 # print(model.get_pretrain()
-print(model(X))
+# print(model(X))
 
 
 class UNet3D_multi_1(nn.Module):
