@@ -403,7 +403,7 @@ class UNet3D_sim(nn.Module):
     # acdc 3x32x112x112
     # echo 3x3x112x112
     def __init__(self, in_channels=3, out_channels=1, init_features=30):
-        super(UNet3D_ef_sim, self).__init__()
+        super(UNet3D_sim, self).__init__()
         features = init_features
         features_in = [in_channels, features, features * 2,features * 4,features * 8]
         features_out = [features,   features * 2,features * 4,features * 8,features * 16]
@@ -420,21 +420,23 @@ class UNet3D_sim(nn.Module):
             dec_layer.append(nn.ConvTranspose3d(dec_features_in[i], dec_features_out[i], kernel_size=2, stride=2))
             dec_layer.append(UNet3d_block(dec_features_in[i],dec_features_out[i]))
                 
-        self.conv = nn.Conv3d(
-            in_channels=features, out_channels=out_channels, kernel_size=1
-        )
+        
     
         self.features = nn.Sequential(*layers)
         self.dec = nn.Sequential(*dec_layer)
+        self.conv = nn.Conv3d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
         
     def forward(self, x):
+        enc_seg = []
         # enc
         for i in range(9):
             # MaxPool3d
             if i % 2 ==1: # 1,3,5,7
                 x = self.features[i](x)
-            else:
-                for j in range(5):
+            else: # 0,2,4,6
+                for j in range(6):
                     x = self.features[i].features[j](x)
                     if j == 5:
                         enc_seg.append(x)
@@ -442,22 +444,13 @@ class UNet3D_sim(nn.Module):
         for i in range(8):
             if i % 2 == 0: # 0,2,4,6
                 x = self.dec[i](x)
-            else:
-                for j in range(5):
-                    x = self.dec[i].features[j](torch.cat(x,enc_seg[3-(i//2)], dim=1))
-
+            else: # 1,3,5,7
+                x = self.dec[i].features(torch.cat((x,enc_seg[3-(i//2)]), dim=1))
+        
+        
         x = self.conv(x)
         return x    
 
-
-
-# model = UNet3D_ef_seg_stitch()
-model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
-X = torch.rand(2,3,32,112,112)
-# # flow = torch.rand(3*2,2,32,112,112)
-# print(model.fc[2].bias.data)
-# print(model.get_pretrain()
-print(model)
 
 
 class UNet3D_ef_seg_stitch(nn.Module):
@@ -465,7 +458,7 @@ class UNet3D_ef_seg_stitch(nn.Module):
         super(UNet3D_ef_seg_stitch, self).__init__()
         self.ef = UNet3D_ef_sim(in_channels=in_channels, out_channels=out_channels, init_features=init_features)
         self.seg = UNet3D_sim(in_channels=in_channels, out_channels=out_channels, init_features=init_features)
-        self._init_models(self.ef,self.seg)
+        # self._init_models(self.ef,self.seg)
         feature =  init_features
         stitch_in = [feature*2,feature*2,]
         stitches = []
@@ -475,7 +468,7 @@ class UNet3D_ef_seg_stitch(nn.Module):
                             in_channels=f_size,
                             out_channels=f_size//2,
                             kernel_size=(1,1,1),
-                            padding=1,
+                            padding=0,
                             stride=1,
                             bias=False,
                         ))
@@ -483,7 +476,7 @@ class UNet3D_ef_seg_stitch(nn.Module):
                 in_channels=f_size,
                 out_channels=f_size//2,
                 kernel_size=(1,1,1),
-                padding=1,
+                padding=0,
                 stride=1,
                 bias=False,
             ))
@@ -506,14 +499,15 @@ class UNet3D_ef_seg_stitch(nn.Module):
             
     def forward(self, x):
         enc_seg = []
-        y = x.detach().clone()
+        y=x
+        # y = x.detach().clone()
         for i in range(9):
             # MaxPool3d
             if i % 2 ==1: # 1,3,5,7
-                x = self.ef.features[i].features[j](x)
-                y = self.seg.features[i].features[j](y)
+                x = self.ef.features[i](x)
+                y = self.seg.features[i](y)
             # UNet3d_block
-            else:
+            else: # 0,2,4,6,8
                 for j in range(6):
                     x = self.ef.features[i].features[j](x)
                     y = self.seg.features[i].features[j](y)
@@ -522,28 +516,28 @@ class UNet3D_ef_seg_stitch(nn.Module):
                         enc_seg.append(y)
                     # stitch
                     if j == 2 or j == 5:
-                        x = self.stitch[i//2](torch.cat(x,y,dim=1))
-                        y = self.stitch[(i//2) +1](torch.cat(x,y,dim=1))
+                        x_tmp = self.stitch[i](torch.cat((x,y),dim=1))
+                        y = self.stitch[i+1](torch.cat((x,y),dim=1))
+                        x = x_tmp
         # dec
         for i in range(8):
             if i % 2 == 0: # 0,2,4,6
                 y = self.seg.dec[i](y)
-            else:
-                for j in range(5):
-                    y = self.seg.dec[i].features[j](torch.cat(y,enc_seg[3-(i//2)], dim=1))
+            else: # 1,3,5,7
+                y = self.seg.dec[i].features(torch.cat((y,enc_seg[3-(i//2)]), dim=1))
 
-        return self.ef.fc(x), self.seg.conv(y)         
+        return self.seg.conv(y),self.ef.fc(x)         
 
 
-# +
-# # model = UNet3D_ef_seg_stitch()
-# model = UNet3D(in_channels=3, out_channels=1, init_features=30)
-# X = torch.rand(2,3,32,112,112)
-# # # flow = torch.rand(3*2,2,32,112,112)
-# # print(model.fc[2].bias.data)
-# # print(model.get_pretrain()
-# print(model)
-# -
+
+model = UNet3D_ef_seg_stitch()
+# model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
+X = torch.rand(2,3,32,112,112)
+# # flow = torch.rand(3*2,2,32,112,112)
+# print(model.fc[2].bias.data)
+# print(model.get_pretrain()
+print(model(X))
+
 
 class UNet3D_multi_1(nn.Module):
     # acdc 3x32x112x112
