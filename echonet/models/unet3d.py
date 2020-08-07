@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections import OrderedDict
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -294,13 +295,254 @@ class UNet3D_ef(nn.Module):
         
 
 
-# +
-# model = UNet3D_ef()
-# X = torch.rand(2,3,32,112,112)
+# -
+
+class UNet3D_ef_esv_edv(nn.Module):
+    # acdc 3x32x112x112
+    # echo 3x3x112x112
+    def __init__(self, in_channels=3, out_channels=1, init_features=30):
+        super(UNet3D_ef_esv_edv, self).__init__()
+        features = init_features
+        self.encoder1 = UNet3D._block(in_channels, features, name="enc1")
+        self.pool1 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.encoder2 = UNet3D._block(features, features * 2, name="enc2")
+        self.pool2 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.encoder3 = UNet3D._block(features * 2, features * 4, name="enc3")
+        self.pool3 = nn.MaxPool3d(kernel_size=2, stride=2)
+        self.encoder4 = UNet3D._block(features * 4, features * 8, name="enc4")
+        self.pool4 = nn.MaxPool3d(kernel_size=2, stride=2)
+
+        self.bottleneck = UNet3D._block(features * 8, features * 16, name="bottleneck")
+        
+        # FC2
+        self.fc1 = UNet3D_ef_esv_edv._fc_block(480,1)
+        self.fc2 = UNet3D_ef_esv_edv._fc_block(480,1)
+        self.fc3 = UNet3D_ef_esv_edv._fc_block(480,1)
+        
+    def forward(self, x):
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool1(enc1))
+        enc3 = self.encoder3(self.pool2(enc2))
+        enc4 = self.encoder4(self.pool3(enc3))
+
+        bottleneck = self.bottleneck(self.pool4(enc4))
+
+        Ef_out1 = self.fc1(bottleneck)
+        Ef_out2 = self.fc2(bottleneck)
+        Ef_out3 = self.fc3(bottleneck)
+        return Ef_out1,Ef_out2,Ef_out3
+    
+    @staticmethod
+    def _fc_block(in_channels, out_chnl):
+        return nn.Sequential(
+                                nn.AdaptiveAvgPool3d((None, 1, 1)),
+                                nn.AdaptiveMaxPool3d(1),
+            nn.Conv3d(in_channels, out_chnl, kernel_size=1, stride=1, padding=0)
+        ) 
+
+
+class UNet3d_block(nn.Module):
+    def __init__(self, in_channels=3, features=1):
+        super(UNet3d_block, self).__init__()
+        self.features = nn.Sequential( nn.Conv3d(
+                            in_channels=in_channels,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            stride=1,
+                            bias=False,
+                        ),
+                    nn.InstanceNorm3d(num_features=features),
+                    nn.LeakyReLU(negative_slope=0.01, inplace=True),
+                    nn.Conv3d(
+                            in_channels=features,
+                            out_channels=features,
+                            kernel_size=3,
+                            padding=1,
+                            stride=1,
+                            bias=False,
+                        ),
+                    nn.InstanceNorm3d(num_features=features),
+                    nn.LeakyReLU(negative_slope=0.01, inplace=True)
+                    )
+    def forward(self,x):
+        return self.feature(x)
+
+
+class UNet3D_ef_sim(nn.Module):
+    # acdc 3x32x112x112
+    # echo 3x3x112x112
+    def __init__(self, in_channels=3, out_channels=1, init_features=30):
+        super(UNet3D_ef_sim, self).__init__()
+        features = init_features
+        features_in = [in_channels, features, features * 2,features * 4,features * 8]
+        features_out = [features,   features * 2,features * 4,features * 8,features * 16]
+        layers = []
+        for i in range(5):
+            layers.append(UNet3d_block(features_in[i],features_out[i]))
+            if i != 4:
+                layers.append(nn.MaxPool3d(kernel_size=2, stride=2))
+                
+        self.features = nn.Sequential(*layers)
+    
+        # FC2
+        self.fc = nn.Sequential(
+                                nn.AdaptiveAvgPool3d((None, 1, 1)),
+                                nn.AdaptiveMaxPool3d(1),
+            nn.Conv3d(480, 1, kernel_size=1, stride=1, padding=0)
+        ) 
+        
+    def forward(self, x):
+        x = self.features(x)
+        Ef_out = self.fc(x)
+        return Ef_out    
+        
+
+
+class UNet3D_sim(nn.Module):
+    # acdc 3x32x112x112
+    # echo 3x3x112x112
+    def __init__(self, in_channels=3, out_channels=1, init_features=30):
+        super(UNet3D_ef_sim, self).__init__()
+        features = init_features
+        features_in = [in_channels, features, features * 2,features * 4,features * 8]
+        features_out = [features,   features * 2,features * 4,features * 8,features * 16]
+        layers = []
+        for i in range(5):
+            layers.append(UNet3d_block(features_in[i],features_out[i]))
+            if i != 4:
+                layers.append(nn.MaxPool3d(kernel_size=2, stride=2))
+        
+        dec_features_in = [features * 16, features * 8, features * 4,features * 2 ]
+        dec_features_out = [features * 8,   features * 4,features * 2,features * 1]
+        dec_layer = []
+        for i in range(4):
+            dec_layer.append(nn.ConvTranspose3d(dec_features_in[i], dec_features_out[i], kernel_size=2, stride=2))
+            dec_layer.append(UNet3d_block(dec_features_in[i],dec_features_out[i]))
+                
+        self.conv = nn.Conv3d(
+            in_channels=features, out_channels=out_channels, kernel_size=1
+        )
+    
+        self.features = nn.Sequential(*layers)
+        self.dec = nn.Sequential(*dec_layer)
+        
+    def forward(self, x):
+        # enc
+        for i in range(9):
+            # MaxPool3d
+            if i % 2 ==1: # 1,3,5,7
+                x = self.features[i](x)
+            else:
+                for j in range(5):
+                    x = self.features[i].features[j](x)
+                    if j == 5:
+                        enc_seg.append(x)
+        # dec
+        for i in range(8):
+            if i % 2 == 0: # 0,2,4,6
+                x = self.dec[i](x)
+            else:
+                for j in range(5):
+                    x = self.dec[i].features[j](torch.cat(x,enc_seg[3-(i//2)], dim=1))
+
+        x = self.conv(x)
+        return x    
+        
+
+
+# model = UNet3D_ef_seg_stitch()
+model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
+X = torch.rand(2,3,32,112,112)
 # # flow = torch.rand(3*2,2,32,112,112)
 # print(model.fc[2].bias.data)
 # print(model.get_pretrain()
-# # print(model(X).size())
+print(model)
+
+
+class UNet3D_ef_seg_stitch(nn.Module):
+    def __init__(self, in_channels=3, out_channels=1, init_features=30):
+        super(UNet3D_ef_seg_stitch, self).__init__()
+        self.ef = UNet3D_ef_sim(in_channels=in_channels, out_channels=out_channels, init_features=init_features)
+        self.seg = UNet3D_sim(in_channels=in_channels, out_channels=out_channels, init_features=init_features)
+        self._init_models(self.ef,self.seg)
+        feature =  init_features
+        stitch_in = [feature*2,feature*2,]
+        stitches = []
+        for i in range(5):
+            f_size = feature*(1<<(i+1))
+            stitches.append(nn.Conv3d(
+                            in_channels=f_size,
+                            out_channels=f_size//2,
+                            kernel_size=(1,1,1),
+                            padding=1,
+                            stride=1,
+                            bias=False,
+                        ))
+            stitches.append(nn.Conv3d(
+                in_channels=f_size,
+                out_channels=f_size//2,
+                kernel_size=(1,1,1),
+                padding=1,
+                stride=1,
+                bias=False,
+            ))
+        self.stitch = stitches
+        
+    def _init_models(self, ef, seg):
+        checkpoint = torch.load("/home/jovyan/code/echodyn_m/output/segmentation/unet3D_seg_m_notshare3_32_2_random/best.pt")
+        count = 0
+        ef_state_dict = ef.state_dict()
+        seg_state_dict = seg.state_dict()
+        pre_dict = defaultdict(list)
+        for idx,layer in enumerate(checkpoint['state_dict'].keys()):
+            pre_dict[idx] = layer
+        ef_map = [0,1,2,3] + [28,29,30,31,32,33,34,35]
+        seg_map = [i for i in range(28)]
+        
+        for idx,layer in enumerate(ef_state_dict.keys()):
+            ef_state_dict[layer] = checkpoint['state_dict'][pre_dict[ef_map[idx]]]
+            seg_state_dict[layer] = checkpoint['state_dict'][pre_dict[seg_map[idx]]]
+            
+    def forward(self, x):
+        enc_seg = []
+        y = x.detach().clone()
+        for i in range(9):
+            # MaxPool3d
+            if i % 2 ==1: # 1,3,5,7
+                x = self.ef.features[i].features[j](x)
+                y = self.seg.features[i].features[j](y)
+            # UNet3d_block
+            else:
+                for j in range(6):
+                    x = self.ef.features[i].features[j](x)
+                    y = self.seg.features[i].features[j](y)
+                    # save for deconvolution
+                    if j == 5:
+                        enc_seg.append(y)
+                    # stitch
+                    if j == 2 or j == 5:
+                        x = self.stitch[i//2](torch.cat(x,y,dim=1))
+                        y = self.stitch[(i//2) +1](torch.cat(x,y,dim=1))
+        # dec
+        for i in range(8):
+            if i % 2 == 0: # 0,2,4,6
+                y = self.seg.dec[i](y)
+            else:
+                for j in range(5):
+                    y = self.seg.dec[i].features[j](torch.cat(y,enc_seg[3-(i//2)], dim=1))
+
+        return self.ef.fc(x), self.seg.conv(y)         
+
+
+# +
+# # model = UNet3D_ef_seg_stitch()
+# model = UNet3D(in_channels=3, out_channels=1, init_features=30)
+# X = torch.rand(2,3,32,112,112)
+# # # flow = torch.rand(3*2,2,32,112,112)
+# # print(model.fc[2].bias.data)
+# # print(model.get_pretrain()
+# print(model)
 # -
 
 class UNet3D_multi_1(nn.Module):

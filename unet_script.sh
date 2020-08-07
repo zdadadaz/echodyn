@@ -20,4 +20,4 @@
 
 python train_unet3d.py
 
-python train_unet3d_flow.py
+python train_unet3d_seg_m.py
