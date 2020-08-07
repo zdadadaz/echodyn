@@ -162,7 +162,7 @@ class Echo_tsn(torch.utils.data.Dataset):
                         peak = peaks[cc]
                         random_num = peak - (length)*self.period
                     else:
-                        random_num = np.random.choice(f - (length - 1) * self.period, self.crops)
+                        random_num = np.random.choice(f - (length - 1) * self.period)
                 random_num = min(max(0,random_num),f - (length - 1) * self.period-1)
                 start.append(random_num)
             start = np.array(start)
