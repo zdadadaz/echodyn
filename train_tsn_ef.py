@@ -312,7 +312,7 @@ run(modelname="r2p1_18_ef_tsn",
         segment=3,
         pretrained=True,
         batch_size=4,
-        run_test=False,
+        run_test=True,
         lr_step_period=15,
         num_epochs = 50)
 

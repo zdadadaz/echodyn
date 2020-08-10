@@ -11,7 +11,7 @@ import pathlib
 import tqdm
 import scipy.signal
 import time
-from echonet.models.unet3d import UNet3D, UNet3D_multi, UNet3D_multi_1,UNet3D_multi_2,UNet3D_multi_3,UNet3D_multi_4
+from echonet.models.unet3d import UNet3D, UNet3D_multi_3, UNet3D_ef_seg_stitch
 from echonet.models.deeplabv3 import r2p1_fcn3d_main
 from echonet.models.r2plus1D import R2Plus1D_unet_multi
 
@@ -266,20 +266,23 @@ def run(num_epochs=50,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3D" in modelname.split('_'):
-        notshare = int(modelname[-1])
-        print("notshare",notshare)
-        if notshare == 1:
-            model = UNet3D_multi_1(in_channels=3, out_channels=1)
-        elif notshare == 2:
-            model = UNet3D_multi_2(in_channels=3, out_channels=1)
-        elif notshare == 3:
-            model = UNet3D_multi_3(in_channels=3, out_channels=1)
-        elif notshare == 4:
-            model = UNet3D_multi_4(in_channels=3, out_channels=1)
+        print('stitch')
+        model = UNet3D_ef_seg_stitch()
+#         notshare = int(modelname[-1])
+#         print("notshare",notshare)
+#         if notshare == 1:
+#             model = UNet3D_multi_1(in_channels=3, out_channels=1)
+#         elif notshare == 2:
+#             model = UNet3D_multi_2(in_channels=3, out_channels=1)
+#         elif notshare == 3:
+#             model = UNet3D_multi_3(in_channels=3, out_channels=1)
+#         elif notshare == 4:
+#             model = UNet3D_multi_4(in_channels=3, out_channels=1)
 #         model = UNet3D_multi(in_channels=3, out_channels=1)
     else:
 #         model = R2Plus1D_unet_multi(layer_sizes=[2, 2, 2, 2])
         model = r2p1_fcn3d_main()
+        
         # model = torchvision.models.segmentation.__dict__[modelname](pretrained=pretrained, aux_loss=False)
 #     print(model)
     # print(model)
@@ -287,6 +290,7 @@ def run(num_epochs=50,
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
+    
 
     optim = torch.optim.SGD(model.parameters(), lr=1e-5, momentum=0.9)
     if lr_step_period is None:
@@ -581,27 +585,28 @@ def run(num_epochs=50,
 torch.cuda.empty_cache() 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 
-# run(num_epochs=50,
-#         modelname="r2plus1D_seg_m_FCN",
-#         frames=32,
-#         period=2,
-#         pretrained=False,
-#         batch_size=20,
-#         save_segmentation=False,
-#         run_ef_test=False)
-# -
+run(num_epochs=50,
+        modelname="unet3D_seg_m_fullstitch",
+        frames=32,
+        period=2,
+        pretrained=False,
+        batch_size=8,
+        lr_step_period = 15,
+        save_segmentation=False,
+        run_ef_test=True)
 
-for i in range(3,2,-1):
-    modelname = "unet3D_seg_m_noNew_notshare" + str(i)
-    run(num_epochs=26,
-            modelname=modelname,
-            frames=128,
-            period=1,
-            pretrained=False,
-            batch_size=2,
-            save_segmentation=False,
-            lr_step_period = 15,
-            run_ef_test=True)
+# +
+# for i in range(3,2,-1):
+#     modelname = "unet3D_seg_m_noNew_notshare" + str(i)
+#     run(num_epochs=26,
+#             modelname=modelname,
+#             frames=128,
+#             period=1,
+#             pretrained=False,
+#             batch_size=2,
+#             save_segmentation=False,
+#             lr_step_period = 15,
+#             run_ef_test=True)
 
 # +
 # run(num_epochs=50,

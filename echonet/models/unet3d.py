@@ -398,7 +398,6 @@ class UNet3D_ef_sim(nn.Module):
         return Ef_out    
 
 
-
 class UNet3D_sim(nn.Module):
     # acdc 3x32x112x112
     # echo 3x3x112x112
@@ -452,7 +451,6 @@ class UNet3D_sim(nn.Module):
         return x    
 
 
-
 class UNet3D_ef_seg_stitch(nn.Module):
     def __init__(self, in_channels=3, out_channels=1, init_features=30):
         super(UNet3D_ef_seg_stitch, self).__init__()
@@ -480,28 +478,29 @@ class UNet3D_ef_seg_stitch(nn.Module):
                 stride=1,
                 bias=False,
             ))
-        self.stitch = stitches
+#         self.stitch = stitches
+        self.stitch = nn.Sequential(*stitches)
         
     def _init_models(self, ef, seg):
+        # checkpoint = torch.load("/Users/chienchichen/Desktop/UQ/capstone/medical/code/echodyn/output/segmentation/unet3d_notshare3/best.pt",map_location=torch.device('cpu'))
         checkpoint = torch.load("/home/jovyan/code/echodyn_m/output/segmentation/unet3D_seg_m_notshare3_32_2_random/best.pt")
         count = 0
         ef_state_dict = ef.state_dict()
         seg_state_dict = seg.state_dict()
         pre_dict = defaultdict(list)
         for idx,layer in enumerate(checkpoint['state_dict'].keys()):
-            print(idx,layer)
             pre_dict[idx] = layer
         ef_map = [0,1,2,3] + [28,29,30,31,32,33,34,35]
         seg_map = [i for i in range(28)]
-        
         for idx,layer in enumerate(ef_state_dict.keys()):
             ef_state_dict[layer] = checkpoint['state_dict'][pre_dict[ef_map[idx]]]
+        for idx,layer in enumerate(seg_state_dict.keys()):
             seg_state_dict[layer] = checkpoint['state_dict'][pre_dict[seg_map[idx]]]
             
     def forward(self, x):
         enc_seg = []
         y=x
-        # y = x.detach().clone()
+#         y = x.detach().clone()
         for i in range(9):
             # MaxPool3d
             if i % 2 ==1: # 1,3,5,7
@@ -513,11 +512,15 @@ class UNet3D_ef_seg_stitch(nn.Module):
                     x = self.ef.features[i].features[j](x)
                     y = self.seg.features[i].features[j](y)
                     # save for deconvolution
+#                     print('j',x.size())
+#                     print('j',y.size())
                     if j == 5:
                         enc_seg.append(y)
                     # stitch
                     if j == 2 or j == 5:
+#                         print('stich',x.size(),y.size(),torch.cat((x,y),dim=1).size(),self.stitch[i])
                         x_tmp = self.stitch[i](torch.cat((x,y),dim=1))
+#                         print('stich',x_tmp.size(),x.size())
                         y = self.stitch[i+1](torch.cat((x,y),dim=1))
                         x = x_tmp
         # dec
@@ -531,13 +534,16 @@ class UNet3D_ef_seg_stitch(nn.Module):
 
 
 
-model = UNet3D_ef_seg_stitch()
-# model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
-X = torch.rand(2,3,32,112,112)
+# +
+# model = UNet3D_ef_seg_stitch()
+# # model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
+# X = torch.rand(2,3,32,112,112)
 # # flow = torch.rand(3*2,2,32,112,112)
 # print(model.fc[2].bias.data)
 # print(model.get_pretrain()
-# print(model(X))
+# print(model(X)[0].size())
+# -
+
 
 class UNet3D_multi_1(nn.Module):
     # acdc 3x32x112x112
