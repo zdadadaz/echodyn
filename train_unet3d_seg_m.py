@@ -591,7 +591,6 @@ run(num_epochs=50,
         period=2,
         pretrained=False,
         batch_size=8,
-        lr_step_period = 15,
         save_segmentation=False,
         run_ef_test=True)
 

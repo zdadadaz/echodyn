@@ -318,6 +318,12 @@ class UNet3D_ef_esv_edv(nn.Module):
         self.fc1 = UNet3D_ef_esv_edv._fc_block(480,1)
         self.fc2 = UNet3D_ef_esv_edv._fc_block(480,1)
         self.fc3 = UNet3D_ef_esv_edv._fc_block(480,1)
+        self._init_fc()
+        
+    def _init_fc(self):
+        self.fc1[2].bias.data[0] = 55.6
+        self.fc2[2].bias.data[0] = 55.6
+        self.fc3[2].bias.data[0] = 55.6
         
     def forward(self, x):
         enc1 = self.encoder1(x)
@@ -340,6 +346,16 @@ class UNet3D_ef_esv_edv(nn.Module):
             nn.Conv3d(in_channels, out_chnl, kernel_size=1, stride=1, padding=0)
         ) 
 
+
+# +
+# model = UNet3D_ef_esv_edv()
+# # model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
+# X = torch.rand(2,3,32,112,112)
+# # flow = torch.rand(3*2,2,32,112,112)
+# print(model.fc1[2].bias)
+# print(model.get_pretrain()
+# print(model(X)[0].size())
+# -
 
 class UNet3d_block(nn.Module):
     def __init__(self, in_channels=3, features=1):
@@ -534,15 +550,7 @@ class UNet3D_ef_seg_stitch(nn.Module):
 
 
 
-# +
-# model = UNet3D_ef_seg_stitch()
-# # model = UNet3D_sim(in_channels=3, out_channels=1, init_features=30)
-# X = torch.rand(2,3,32,112,112)
-# # flow = torch.rand(3*2,2,32,112,112)
-# print(model.fc[2].bias.data)
-# print(model.get_pretrain()
-# print(model(X)[0].size())
-# -
+
 
 
 class UNet3D_multi_1(nn.Module):
