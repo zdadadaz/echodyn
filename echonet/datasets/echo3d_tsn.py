@@ -160,7 +160,8 @@ class Echo_tsn(torch.utils.data.Dataset):
                 else:
                     if cc < len(peaks):
                         peak = peaks[cc]
-                        random_num = peak - (length)*self.period
+                        random_num = peak - length
+#                         random_num = peak - (length)*self.period
                     else:
                         random_num = np.random.choice(f - (length - 1) * self.period)
                 random_num = min(max(0,random_num),f - (length - 1) * self.period-1)

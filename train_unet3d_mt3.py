@@ -79,7 +79,7 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
                 if blocks is None:
                     ef_out,esv_out,edv_out = model(X)
                 else:
-                    tmp = torch.cat([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
+                    tmp = np.array([model(X[j:(j + blocks), ...]) for j in range(0, X.shape[0], blocks)])
                     ef_out = torch.cat([tmp[j][0] for j in range(tmp.shape[0])])
                     esv_out = torch.cat([tmp[j][1] for j in range(tmp.shape[0])])
                     edv_out = torch.cat([tmp[j][2] for j in range(tmp.shape[0])])
@@ -105,7 +105,8 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
                 loss_esv = criterion(esv_out.view(-1), esv)
                 loss_edv = criterion(edv_out.view(-1), edv)
                 
-                loss = loss_ef + loss_esv + loss_edv
+                loss_weight = [0.1, 0.1]
+                loss = loss_ef + loss_esv*loss_weight[0] + loss_edv*loss_weight[1]
                 
                 if phase == 'train':
                     optim.zero_grad()
@@ -114,8 +115,8 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
                 runningloss += loss.item() * X.size(0)
                 runningloss_ef += loss_ef.item() * X.size(0)
-                runningloss_esv += loss_esv.item() * X.size(0)
-                runningloss_edv += loss_edv.item() * X.size(0)
+                runningloss_esv += loss_esv.item() * X.size(0)*loss_weight[0]
+                runningloss_edv += loss_edv.item() * X.size(0)*loss_weight[1]
                 counter += X.size(0)
 
                 epoch_loss = runningloss / counter
@@ -208,6 +209,7 @@ def run(num_epochs=45,
               "period": period,
               }
 
+# +
 # Data preparation
     train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
@@ -345,11 +347,12 @@ def run(num_epochs=45,
                 f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y_edv, np.array(list(map(lambda x: x.mean(), yhat_edv))), sklearn.metrics.mean_absolute_error)))
                 f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y_edv, np.array(list(map(lambda x: x.mean(), yhat_edv))), sklearn.metrics.mean_squared_error)))))
                 f.flush()
-
+                
+#                 print("yhat_esv shape",yhat_esv.shape)
                 with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-                    for (filename, pred) in zip(ds.fnames, yhat):
+                    for idx, (filename, pred) in enumerate(zip(ds.fnames, yhat)):
                         for (i, p) in enumerate(pred):
-                            g.write("{},{},{:.4f},{:.4f},{:.4f}\n".format(filename, i, p, yhat_esv[i], yhat_edv[i]))
+                            g.write("{},{},{:.4f},{:.4f},{:.4f}\n".format(filename, i, p, yhat_esv[idx,i,...], yhat_edv[idx,i,...]))
                 echonet.utils.latexify()
                 yhat = np.array(list(map(lambda x: x.mean(), yhat)))
 
@@ -383,6 +386,7 @@ def run(num_epochs=45,
                 plt.tight_layout()
                 plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
                 plt.close(fig)
+# -
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 # run(modelname="unet3d_ef_noNew",
@@ -398,9 +402,8 @@ run(modelname="unet3d_mt3",
         period=2,
         pretrained=True,
         batch_size=16,
-        lr_step_period=15,
         run_test=True,
-        num_epochs = 50)
+        num_epochs = 70)
 
 # +
 # run(modelname="r2plus1d_18_author",

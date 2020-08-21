@@ -127,8 +127,6 @@ def run_epoch(model,modelname, dataloader, phase, optim, device, save_all=False,
     return epoch_loss, yhat, y
 
 
-# -
-
 def run(num_epochs=45,
         modelname="r3d_18",
         tasks="EF",
@@ -342,7 +340,7 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 run(modelname="r2plus1_ef_flow_tv",
         frames=33,
         period=2,
-        pretrained=False,
+        pretrained=True,
         batch_size=8,
         run_test=True,
         num_epochs = 50)

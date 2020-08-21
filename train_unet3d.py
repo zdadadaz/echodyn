@@ -103,8 +103,6 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     return epoch_loss, yhat, y
 
 
-# -
-
 # +
 def run(num_epochs=45,
         modelname="r3d_18",
