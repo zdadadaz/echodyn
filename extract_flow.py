@@ -110,7 +110,7 @@ def extract_flow(args):
 if __name__ =='__main__':
     echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
     period = 2
-    pool = Pool(8)   # multi-processing
+    pool = Pool(20)   # multi-processing
     
     splits = ['train', 'test','val']
     for split in splits:
