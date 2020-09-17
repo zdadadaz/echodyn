@@ -12,6 +12,7 @@ import tqdm
 import scipy.signal
 import time
 from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
+from echonet.models.r2plus1DResidualAttention import ResidualAttentionModel_92 as RA92
 # from echonet.models.s3d import model_s3d
 from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
 # from echonet.models.resnet3d import resnet50
@@ -62,7 +63,6 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
 
                 summer += outcome.sum()
                 summer_squared += (outcome ** 2).sum()
-
                 if blocks is None:
                     outputs = model(X)
                 else:
@@ -134,8 +134,9 @@ def run(num_epochs=45,
         print('no new-net')
         model = UNet3D_ef(in_channels=3, out_channels=1)
         model.fc[2].bias.data[0] = 55.6
-#         print("unet3d_separate")
-#         model = UNet3D_ef_separate(in_channels=3, out_channels=1)
+    elif "RA92" in modelname.split('_'):
+        model = RA92()
+        model.fc.bias.data[0] = 55.6
     else:
 #         pretrain_path = './../s3d/RGB_imagenet.pkl'
 #         model = model_s3d(pretrain_path,1,0.7)
@@ -169,6 +170,7 @@ def run(num_epochs=45,
               "period": period,
               }
 
+# +
 # Data preparation
     train_dataset = echonet.datasets.Echo(split="train", **kwargs, pad=12)
     if n_train_patients is not None and len(train_dataset) > n_train_patients:
@@ -254,63 +256,64 @@ def run(num_epochs=45,
                 f.write("{} (one crop) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, yhat, sklearn.metrics.mean_squared_error)))))
                 f.flush()
 
-                ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
-                dataloader = torch.utils.data.DataLoader(
-                    ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
-                yhat = []
-                y = []
-                divide= 5
-                for d in range(divide):
-                    loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = d, divide = divide)
-                    yhat.append(yhat1)
-                    y.append(y1)
-#                 loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
-#                 yhat.append(yhat1)
-#                 y.append(y1)
-                yhat = np.concatenate(yhat)
-                y = np.concatenate(y)
-                f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
-                f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
-                f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
-                f.flush()
+#                 ds = echonet.datasets.Echo(split=split, **kwargs, crops="all")
+#                 dataloader = torch.utils.data.DataLoader(
+#                     ds, batch_size=1, num_workers=num_workers, shuffle=False, pin_memory=(device.type == "cuda"))
+#                 yhat = []
+#                 y = []
+#                 divide= 5
+#                 for d in range(divide):
+#                     loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = d, divide = divide)
+#                     yhat.append(yhat1)
+#                     y.append(y1)
+# #                 loss, yhat1, y1 = run_epoch(model, dataloader, split, None, device, save_all=True, blocks=50, flag = 1)
+# #                 yhat.append(yhat1)
+# #                 y.append(y1)
+#                 yhat = np.concatenate(yhat)
+#                 y = np.concatenate(y)
+#                 f.write("{} (all crops) R2:   {:.3f} ({:.3f} - {:.3f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.r2_score)))
+#                 f.write("{} (all crops) MAE:  {:.2f} ({:.2f} - {:.2f})\n".format(split, *echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_absolute_error)))
+#                 f.write("{} (all crops) RMSE: {:.2f} ({:.2f} - {:.2f})\n".format(split, *tuple(map(math.sqrt, echonet.utils.bootstrap(y, np.array(list(map(lambda x: x.mean(), yhat))), sklearn.metrics.mean_squared_error)))))
+#                 f.flush()
 
-                with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
-                    for (filename, pred) in zip(ds.fnames, yhat):
-                        for (i, p) in enumerate(pred):
-                            g.write("{},{},{:.4f}\n".format(filename, i, p))
-                echonet.utils.latexify()
-                yhat = np.array(list(map(lambda x: x.mean(), yhat)))
+#                 with open(os.path.join(output, "{}_predictions.csv".format(split)), "w") as g:
+#                     for (filename, pred) in zip(ds.fnames, yhat):
+#                         for (i, p) in enumerate(pred):
+#                             g.write("{},{},{:.4f}\n".format(filename, i, p))
+#                 echonet.utils.latexify()
+#                 yhat = np.array(list(map(lambda x: x.mean(), yhat)))
 
-                fig = plt.figure(figsize=(3, 3))
-                lower = min(y.min(), yhat.min())
-                upper = max(y.max(), yhat.max())
-                plt.scatter(y, yhat, color="k", s=1, edgecolor=None, zorder=2)
-                plt.plot([0, 100], [0, 100], linewidth=1, zorder=3)
-                plt.axis([lower - 3, upper + 3, lower - 3, upper + 3])
-                plt.gca().set_aspect("equal", "box")
-                plt.xlabel("Actual EF (%)")
-                plt.ylabel("Predicted EF (%)")
-                plt.xticks([10, 20, 30, 40, 50, 60, 70, 80])
-                plt.yticks([10, 20, 30, 40, 50, 60, 70, 80])
-                plt.grid(color="gainsboro", linestyle="--", linewidth=1, zorder=1)
-                # plt.gca().set_axisbelow(True)
-                plt.tight_layout()
-                plt.savefig(os.path.join(output, "{}_scatter.pdf".format(split)))
-                plt.close(fig)
+#                 fig = plt.figure(figsize=(3, 3))
+#                 lower = min(y.min(), yhat.min())
+#                 upper = max(y.max(), yhat.max())
+#                 plt.scatter(y, yhat, color="k", s=1, edgecolor=None, zorder=2)
+#                 plt.plot([0, 100], [0, 100], linewidth=1, zorder=3)
+#                 plt.axis([lower - 3, upper + 3, lower - 3, upper + 3])
+#                 plt.gca().set_aspect("equal", "box")
+#                 plt.xlabel("Actual EF (%)")
+#                 plt.ylabel("Predicted EF (%)")
+#                 plt.xticks([10, 20, 30, 40, 50, 60, 70, 80])
+#                 plt.yticks([10, 20, 30, 40, 50, 60, 70, 80])
+#                 plt.grid(color="gainsboro", linestyle="--", linewidth=1, zorder=1)
+#                 # plt.gca().set_axisbelow(True)
+#                 plt.tight_layout()
+#                 plt.savefig(os.path.join(output, "{}_scatter.pdf".format(split)))
+#                 plt.close(fig)
 
-                fig = plt.figure(figsize=(3, 3))
-                plt.plot([0, 1], [0, 1], linewidth=1, color="k", linestyle="--")
-                for thresh in [35, 40, 45, 50]:
-                    fpr, tpr, _ = sklearn.metrics.roc_curve(y > thresh, yhat)
-                    print(thresh, sklearn.metrics.roc_auc_score(y > thresh, yhat))
-                    plt.plot(fpr, tpr)
+#                 fig = plt.figure(figsize=(3, 3))
+#                 plt.plot([0, 1], [0, 1], linewidth=1, color="k", linestyle="--")
+#                 for thresh in [35, 40, 45, 50]:
+#                     fpr, tpr, _ = sklearn.metrics.roc_curve(y > thresh, yhat)
+#                     print(thresh, sklearn.metrics.roc_auc_score(y > thresh, yhat))
+#                     plt.plot(fpr, tpr)
 
-                plt.axis([-0.01, 1.01, -0.01, 1.01])
-                plt.xlabel("False Positive Rate")
-                plt.ylabel("True Positive Rate")
-                plt.tight_layout()
-                plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
-                plt.close(fig)
+#                 plt.axis([-0.01, 1.01, -0.01, 1.01])
+#                 plt.xlabel("False Positive Rate")
+#                 plt.ylabel("True Positive Rate")
+#                 plt.tight_layout()
+#                 plt.savefig(os.path.join(output, "{}_roc.pdf".format(split)))
+#                 plt.close(fig)
+# -
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 # run(modelname="unet3d_ef_noNew",
@@ -321,11 +324,11 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 #         run_test=True,
 #         num_epochs = 50)
 
-run(modelname="unet3d_mt",
+run(modelname="RA92",
         frames=32,
         period=2,
         pretrained=True,
-        batch_size=16,
+        batch_size=2,
         lr_step_period=15,
         run_test=True,
         num_epochs = 50)

@@ -337,11 +337,12 @@ class ResidualAttentionModel_92(nn.Module):
         return out
 
 # +
-# # model = ResidualBlock(64, 128)
+# # # model = ResidualBlock(64, 128)
 # model = ResidualAttentionModel_92()
+# # model.fc.bias.data[0] = 55.6
 # model.cuda()
-# # X = torch.rand(1,64,32,112,112)
-# X = torch.rand(1,3,32,112,112).cuda()
-# # flow = torch.rand(3*2,2,32,112,112)
+# # # X = torch.rand(1,64,32,112,112)
+# X = torch.rand(2,3,32,112,112).cuda()
+# # # flow = torch.rand(3*2,2,32,112,112)
 # out = model(X)
-# print(out.shape)
+# print(out.size())

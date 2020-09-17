@@ -1,7 +1,4 @@
 
-from echonet.models.unet_brain import UNet, UNet_multi
-from echonet.models.unet3d import UNet3D,UNet3D_multi, UNet3D_multi_4, UNet3D_multi_opf
-# from echonet.models.deeplabv3 import DeepLabV3_main, DeepLabV3_multi_main
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,7 +34,9 @@ input_images = torch.rand(2,3,32,112,112)
 # model = UNet(in_channels=3, out_channels=1)
 # model = DeepLabV3_main()
 # model = DeepLabV3_multi_main()
-model = UNet3D_multi_opf(in_channels=3, out_channels=1)
+model = torchvision.models.wide_resnet50_2(pretrained=True)
+print(model)
+# model = UNet3D_multi_opf(in_channels=3, out_channels=1)
 # model = torchvision.models.__dict__["resnet50"](
 #         pretrained=False,
 #         replace_stride_with_dilation=[False, True, True])

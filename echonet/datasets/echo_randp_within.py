@@ -96,6 +96,8 @@ class Echo_randpw(torch.utils.data.Dataset):
         else:
             video = os.path.join(self.folder, "Videos", self.fnames[index])
         video = echonet.utils.loadvideo(video)
+        if self.split =="train":
+            self.period = 3
         
         if self.noise is not None:
             n = video.shape[1] * video.shape[2] * video.shape[3]
@@ -131,13 +133,13 @@ class Echo_randpw(torch.utils.data.Dataset):
         if self.crops == "all":
             start = np.arange(f - (length - 1) * self.period)
         else:
-            if self.split == 'train':
-                if f - (length - 1) * 3 < 0:
-                    randwithin_max = 3
-                    start = np.random.choice(f - (length - 1) * self.period, self.crops)
-                else:
-                    start = np.random.choice(f - (length - 1) * 3, self.crops)
-            else:                
+#             if self.split == 'train':
+#                 if f - (length - 1) * 3 <= 0:
+#                     randwithin_max = 3
+#                     start = np.random.choice(f - (length - 1) * self.period, self.crops)
+#                 else:
+#                     start = np.random.choice(f - (length - 1) * 3, self.crops)
+#             else:                
                 start = np.random.choice(f - (length - 1) * self.period, self.crops)
 
         target = []
@@ -187,7 +189,7 @@ class Echo_randpw(torch.utils.data.Dataset):
             for s in start:
                 ss = [s]
                 for sr in range(length):
-                    ss.append(ss[-1] + np.random.randint(1,randwithin_max)) 
+                    ss.append(ss[-1] + np.random.randint(2,randwithin_max)) 
                 video_tmp.append(video[:, ss, :, :])
             video = tuple(video_tmp)
         else:

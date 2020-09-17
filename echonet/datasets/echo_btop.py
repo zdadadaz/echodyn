@@ -213,21 +213,15 @@ class Echo2d_bt(torch.utils.data.Dataset):
             # append min and max of size
             video_tmp.append(video[:, self.low[filename][0], :, :])
             video_tmp.append(video[:, self.high[filename][1], :, :])
-        
-        if self.crops == 1:
-            video = video[0]
-        else:
-            video = np.stack(video)
-
+        video = np.stack(video_tmp)[:,0,...]
+    
         if self.pad is not None:
-            c, l, h, w = video.shape
-            temp = np.zeros((c, l, h + 2 * self.pad, w + 2 * self.pad), dtype=video.dtype)
-            temp[:, :, self.pad:-self.pad, self.pad:-self.pad] = video
+            c, h, w = video.shape
+            temp = np.zeros((c,  h + 2 * self.pad, w + 2 * self.pad), dtype=video.dtype)
+            temp[:, self.pad:-self.pad, self.pad:-self.pad] = video
             i, j = np.random.randint(0, 2 * self.pad, 2)
-            video = temp[:, :, i:(i + h), j:(j + w)]
-        
-        video = np.squeeze(video[0,...],axis=0)
-        
+            video = temp[:, i:(i + h), j:(j + w)]
+            
         return video, target
 
     def __len__(self):

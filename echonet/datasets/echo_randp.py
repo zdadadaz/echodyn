@@ -97,7 +97,7 @@ class Echo_randp(torch.utils.data.Dataset):
             video = os.path.join(self.folder, "Videos", self.fnames[index])
         video = echonet.utils.loadvideo(video)
         if self.split =='train':
-            self.period = np.random.randint(2,4)
+            self.period = np.random.randint(2,5)
         
         if self.noise is not None:
             n = video.shape[1] * video.shape[2] * video.shape[3]

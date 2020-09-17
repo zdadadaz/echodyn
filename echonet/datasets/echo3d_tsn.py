@@ -102,8 +102,6 @@ class Echo_tsn(torch.utils.data.Dataset):
                         continue
                     self.peak[filename].append(f)
                     
-#             print(len(self.fnames), len(self.peak))
-                    
     def __getitem__(self, index):
 
         if self.split == "external_test":
