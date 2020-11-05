@@ -111,7 +111,7 @@ class ResNet(nn.Module):
                  no_max_pool=False,
                  shortcut_type='B',
                  widen_factor=1.0,
-                 n_classes=400):
+                 n_classes=700):
         super().__init__()
 
         block_inplanes = [int(x * widen_factor) for x in block_inplanes]
@@ -213,7 +213,7 @@ class ResNet(nn.Module):
         return x
 
 
-def load_pretrained_model(model, pretrain_path, model_name, n_finetune_classes):
+def load_pretrained_model(model, pretrain_path, n_finetune_classes=1):
     print('loading pretrained model {}'.format(pretrain_path))
     pretrain = torch.load(pretrain_path, map_location='cpu')
 
@@ -221,10 +221,11 @@ def load_pretrained_model(model, pretrain_path, model_name, n_finetune_classes):
     tmp_model = model
     tmp_model.fc = nn.Linear(tmp_model.fc.in_features,
                                  n_finetune_classes)
+    model.fc.bias.data[0] = 55.6
     return model
 
 
-def generate_model(model_depth,pretrain=False, funetune_size=1, **kwargs):
+def generate_model(model_depth,pretrain=False, **kwargs):
     assert model_depth in [10, 18, 34, 50, 101, 152, 200]
 
     if model_depth == 10:
@@ -243,6 +244,6 @@ def generate_model(model_depth,pretrain=False, funetune_size=1, **kwargs):
         model = ResNet(Bottleneck, [3, 24, 36, 3], get_inplanes(), **kwargs)
 
     if pretrain:
-        load_pretrained_model(model, pretrain, funetune_size)
+        load_pretrained_model(model, pretrain, n_finetune_classes=1)
 
     return model

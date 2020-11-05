@@ -14,7 +14,8 @@ import time
 from echonet.models.unet3d import UNet3D, UNet3D_ef,UNet3D_ef_separate
 from echonet.models.r2plus1DResidualAttention import ResidualAttentionModel_92 as RA92
 # from echonet.models.s3d import model_s3d
-from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
+# from echonet.models.pre_resnet2p1d import generate_model as gen_r2p1d
+from echonet.models.pre_resnet3d import generate_model as gen_r3d
 # from echonet.models.resnet3d import resnet50
 # from echonet.models.deeplabv3 import DeepLabV3_multi_main
 from echonet.models.tsn import TSN_r2p1_18
@@ -103,7 +104,6 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     return epoch_loss, yhat, y
 
 
-# +
 def run(num_epochs=45,
         modelname="r3d_18",
         tasks="EF",
@@ -131,7 +131,7 @@ def run(num_epochs=45,
     pathlib.Path(output).mkdir(parents=True, exist_ok=True)
 
     if "unet3d" in modelname.split('_'):
-        print('no new-net')
+#         print('no new-net')
         model = UNet3D_ef(in_channels=3, out_channels=1)
         model.fc[2].bias.data[0] = 55.6
     elif "RA92" in modelname.split('_'):
@@ -141,12 +141,12 @@ def run(num_epochs=45,
 #         pretrain_path = './../s3d/RGB_imagenet.pkl'
 #         model = model_s3d(pretrain_path,1,0.7)
         model = gen_r2p1d(**{'model_depth':50, 'pretrain' : './../3D-ResNets-PyTorch/pretrain_model/r2p1d50_KM_200ep.pth', 'funetune_size':1,'n_input_channels':3})
-#         model= resnet50(**{'pretrained': False,'in_channels': 3,'num_classes': 1,'temporal_conv_layer': 1})
-
-#             model = torchvision.models.video.__dict__[modelname[:-7]](pretrained=pretrained)
-
-#             model.fc = torch.nn.Linear(model.fc.in_features, 1)
-#             model.fc.bias.data[0] = 55.6
+#         mlist = modelname.split('_')
+#         print("Model", modelname,mlist)
+#         if mlist[-1] == 'K':
+#             size = 700
+#         else:
+#             size = 1039
 
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
@@ -157,8 +157,6 @@ def run(num_epochs=45,
         lr_step_period = math.inf
     scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
 
-
-# -
 
 # image normalization
     mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
@@ -316,19 +314,65 @@ def run(num_epochs=45,
 # -
 
 echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
-# run(modelname="unet3d_ef_noNew",
-#         frames=128,
-#         period=1,
-#         pretrained=False,
-#         batch_size=2,
-#         run_test=True,
-#         num_epochs = 50)
+run(modelname="unet3d_ef_FC2",
+        frames=32,
+        period=2,
+        pretrained=False,
+        batch_size=16,
+        lr_step_period=15,
+        run_test=True,
+        num_epochs = 50)
 
-run(modelname="RA92",
+run(modelname="resnet_18_K",
         frames=32,
         period=2,
         pretrained=True,
-        batch_size=2,
+        batch_size=16,
+        lr_step_period=15,
+        run_test=True,
+        num_epochs = 50)
+
+run(modelname="resnet_18_KM",
+        frames=32,
+        period=2,
+        pretrained=True,
+        batch_size=16,
+        lr_step_period=15,
+        run_test=True,
+        num_epochs = 50)
+
+run(modelname="resnet_50_K",
+        frames=32,
+        period=2,
+        pretrained=True,
+        batch_size=12,
+        lr_step_period=15,
+        run_test=True,
+        num_epochs = 50)
+
+run(modelname="resnet_50_KM",
+        frames=32,
+        period=2,
+        pretrained=True,
+        batch_size=12,
+        lr_step_period=15,
+        run_test=True,
+        num_epochs = 50)
+
+run(modelname="resnet_101_K",
+        frames=32,
+        period=2,
+        pretrained=True,
+        batch_size=8,
+        lr_step_period=15,
+        run_test=True,
+        num_epochs = 50)
+
+run(modelname="resnet_101_KM",
+        frames=32,
+        period=2,
+        pretrained=True,
+        batch_size=8,
         lr_step_period=15,
         run_test=True,
         num_epochs = 50)

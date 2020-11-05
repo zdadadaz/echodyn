@@ -92,25 +92,27 @@ class Echo2d_bt(torch.utils.data.Dataset):
             with open(self.folder / "seg_size.csv") as f:
                 header = f.readline().strip().split(",")
                 for (i, line) in enumerate(f):
-                    filename, f, s, hl, hs, cs, hs = line.strip().split(',')
+                    filename, f, s, hl, hs, cs, cl = line.strip().split(',')
                     f  = int(f)
                     s  = int(s)
                     hl = int(hl)
                     hs = int(hs)
                     cs = int(cs)
-                    hs = int(hs)
-                    if cs!=1 or hs!=1:
-                        continue
+                    cl = int(cl)
                     if cs == 1:
-                        if len(self.low[filename])==0
+#                         print(" cs filename",len(self.low[filename]))
+                        if len(self.low[filename])==0:
                             self.low[filename].append(f)
                             self.low[filename].append(s)
+#                             print(f,s)
                         elif len(self.low[filename])!=0 and self.low[filename][1] > s: 
                             self.low[filename][0] = f
                             self.low[filename][1] = s
+#                             print("existing")
                          
-                    if hs == 1:
-                        if len(self.high[filename])==0
+                    if cl == 1:
+#                         print(" hs filename",len(self.low[filename]))
+                        if len(self.high[filename])==0:
                             self.high[filename].append(f)
                             self.high[filename].append(s)
                         elif len(self.high[filename])!=0 and self.high[filename][1] < s: 
@@ -119,6 +121,7 @@ class Echo2d_bt(torch.utils.data.Dataset):
                     
     def __getitem__(self, index):
 
+        
         if self.split == "external_test":
             video = os.path.join(self.external_test_location, self.fnames[index])
         elif self.split == "clinical_test":
@@ -208,13 +211,16 @@ class Echo2d_bt(torch.utils.data.Dataset):
         c, f, h, w = video.shape
         filename = self.fnames[index]
         if len(self.low[filename]) == 0 or len(self.high[filename])==0:
-            video_tmp.append(video[:, np.random.choice(0,f,2),...])
+            video_tmp = video[:, np.random.choice(f,2),...]
+            video = video_tmp[0,...]
+#             print("rand shape", video.shape)
         else:
             # append min and max of size
             video_tmp.append(video[:, self.low[filename][0], :, :])
-            video_tmp.append(video[:, self.high[filename][1], :, :])
-        video = np.stack(video_tmp)[:,0,...]
-    
+            video_tmp.append(video[:, self.high[filename][0], :, :])
+#             print("video_tmp shape",np.stack(video_tmp).shape)
+            video = np.stack(video_tmp)[:,0,...]
+#         print("video shape",video.shape)
         if self.pad is not None:
             c, h, w = video.shape
             temp = np.zeros((c,  h + 2 * self.pad, w + 2 * self.pad), dtype=video.dtype)

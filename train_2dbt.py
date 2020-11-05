@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import math
 import echonet
 import torch
+import torch.nn as nn
 import os
 import torchvision
 import pathlib
@@ -104,7 +105,6 @@ def run_epoch(model, dataloader, phase, optim, device, save_all=False, blocks=No
     return epoch_loss, yhat, y
 
 
-# +
 def run(num_epochs=45,
         modelname="r3d_18",
         tasks="EF",
@@ -145,21 +145,15 @@ def run(num_epochs=45,
         model.fc = nn.Linear(model.fc.in_features, 1)
         model.fc.bias.data[0] = 55.6
         
-#             model = torchvision.models.video.__dict__[modelname[:-7]](pretrained=pretrained)
-#             model.fc = torch.nn.Linear(model.fc.in_features, 1)
-#             model.fc.bias.data[0] = 55.6
-
     if device.type == "cuda":
         model = torch.nn.DataParallel(model)
     model.to(device)
 
-    optim = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9, weight_decay=1e-4)
+    optim = torch.optim.SGD(model.parameters(), lr=1e-5, momentum=0.9, weight_decay=1e-4)
     if lr_step_period is None:
         lr_step_period = math.inf
     scheduler = torch.optim.lr_scheduler.StepLR(optim, lr_step_period)
 
-
-# -
 
 # image normalization
     mean, std = echonet.utils.get_mean_and_std(echonet.datasets.Echo(split="train"))
@@ -324,9 +318,9 @@ echonet.config.DATA_DIR = '../../data/EchoNet-Dynamic'
 #         run_test=True,
 #         num_epochs = 50)
 
-run(modelname="unet3d_mt",
+run(modelname="res50_bt",
         frames=32,
-        period=2,
+        period=1,
         pretrained=True,
         batch_size=16,
         lr_step_period=15,
